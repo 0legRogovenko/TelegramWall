@@ -30,23 +30,14 @@ async def _async_main(loop: asyncio.AbstractEventLoop) -> None:
     await ptb_app.initialize()
 
     await ptb_app.bot.set_my_commands([
-        BotCommand("start",          "Начало работы"),
-        BotCommand("channels",       "Мои каналы"),
-        BotCommand("add_channel",    "Добавить канал"),
-        BotCommand("remove_channel", "Удалить канал"),
-        BotCommand("filter",         "Фильтр по словам для канала"),
-        BotCommand("quiet",          "Тихий режим (часы без уведомлений)"),
-        BotCommand("summary",        "Саммари поста по ID"),
-        BotCommand("autosummary",    "Авто-саммари каждого поста (Pro)"),
-        BotCommand("digest",         "Ежедневный дайджест (Pro)"),
-        BotCommand("trial",          "3 дня Pro бесплатно"),
-        BotCommand("refer",          "Реферальная ссылка"),
-        BotCommand("status",         "Статус подписки"),
-        BotCommand("subscribe",      "Оформить подписку"),
-        BotCommand("save",           "Сохранить пост в закладки"),
-        BotCommand("saved",          "Мои закладки"),
-        BotCommand("stats",          "Статистика каналов"),
-        BotCommand("aifilter",       "AI-фильтр по теме (Basic/Pro)"),
+        BotCommand("start",       "Начало работы"),
+        BotCommand("channels",    "Мои каналы"),
+        BotCommand("add_channel", "Добавить канал"),
+        BotCommand("summary",     "Саммари поста по ID"),
+        BotCommand("digest",      "AI-режим: дайджест и авто-саммари"),
+        BotCommand("filter",      "Фильтр для канала (слова или AI)"),
+        BotCommand("subscribe",   "Тарифы и подписка"),
+        BotCommand("help",        "Все команды"),
     ])
     logger.info("Bot commands menu set")
 

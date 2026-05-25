@@ -103,6 +103,10 @@ def _help_text() -> str:
 
 # ── General commands ──────────────────────────────────────────────────────────
 
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(_help_text(), parse_mode="HTML")
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db = get_session()
     try:
@@ -426,18 +430,30 @@ async def cmd_remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Unified filter: keyword and AI.
+
+    /filter @channel              — show filters
+    /filter @channel word1 word2  — keyword filter
+    /filter @channel ai topic     — AI relevance filter (Basic/Pro)
+    /filter @channel off          — remove keyword filter
+    /filter @channel ai off       — remove AI filter
+    """
     if not context.args:
         await update.message.reply_text(
-            "<b>🔍 Фильтр по ключевым словам</b>\n\n"
-            "Установить: /filter @channel слово1 слово2\n"
-            "Посмотреть: /filter @channel\n"
-            "Убрать: /filter @channel off",
+            "<b>🔍 Фильтр для канала</b>\n\n"
+            "Посмотреть: /filter @channel\n\n"
+            "<b>Ключевые слова</b> — пропускать посты с нужными словами:\n"
+            "/filter @channel слово1 слово2\n"
+            "/filter @channel off — убрать\n\n"
+            "<b>AI по теме</b> <i>(Basic/Pro)</i> — пропускать посты по смыслу:\n"
+            "/filter @channel ai только про экономику\n"
+            "/filter @channel ai off — убрать",
             parse_mode="HTML",
         )
         return
 
     username = context.args[0].lstrip("@").lower()
-    keywords_args = context.args[1:]
+    rest = context.args[1:]
 
     db = get_session()
     try:
@@ -451,35 +467,67 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await update.message.reply_text(f"Канал @{username} не в вашем списке.")
             return
 
-        if not keywords_args:
-            if uc.keywords:
+        # Show current filters
+        if not rest:
+            lines = [f"<b>🔍 Фильтры @{username}</b>\n"]
+            lines.append(f"Ключевые слова: <code>{uc.keywords}</code>" if uc.keywords else "Ключевые слова: не установлены")
+            lines.append(f"AI по теме: <code>{uc.ai_filter}</code>" if uc.ai_filter else "AI по теме: не установлен")
+            lines.append(f"\n/filter @{username} off — убрать ключевые слова")
+            lines.append(f"/filter @{username} ai off — убрать AI-фильтр")
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            return
+
+        # AI filter branch
+        if rest[0].lower() == "ai":
+            if not user.can_summary:
                 await update.message.reply_text(
-                    f"<b>🔍 Фильтр @{username}</b>\n\n"
-                    f"<code>{uc.keywords}</code>\n\n"
-                    f"Убрать: /filter @{username} off",
+                    "<b>🤖 AI-фильтр недоступен</b>\n\nФункция доступна на тарифах Basic и Pro.",
                     parse_mode="HTML",
+                    reply_markup=subscribe_keyboard(),
+                )
+                return
+            ai_args = rest[1:]
+            if not ai_args:
+                if uc.ai_filter:
+                    await update.message.reply_text(
+                        f"<b>🤖 AI-фильтр @{username}</b>\n\n<code>{uc.ai_filter}</code>\n\n"
+                        f"Убрать: /filter @{username} ai off",
+                        parse_mode="HTML",
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"Не установлен.\nПример: /filter @{username} ai только про экономику",
+                        parse_mode="HTML",
+                    )
+                return
+            if ai_args[0].lower() == "off":
+                uc.ai_filter = None
+                db.commit()
+                await update.message.reply_text(
+                    f"✅ <b>AI-фильтр @{username} удалён</b>", parse_mode="HTML"
                 )
             else:
+                uc.ai_filter = " ".join(ai_args)
+                db.commit()
                 await update.message.reply_text(
-                    f"<b>🔍 Фильтр @{username}</b>\n\nНе установлен — приходят все посты.",
+                    f"✅ <b>AI-фильтр @{username} установлен</b>\n\n<code>{uc.ai_filter}</code>",
                     parse_mode="HTML",
                 )
             return
 
-        if keywords_args[0].lower() == "off":
+        # Keyword filter branch
+        if rest[0].lower() == "off":
             uc.keywords = None
             db.commit()
             await update.message.reply_text(
-                f"✅ <b>Фильтр @{username} удалён</b>\n\nТеперь приходят все посты.",
-                parse_mode="HTML",
+                f"✅ <b>Фильтр по словам @{username} удалён</b>", parse_mode="HTML"
             )
         else:
-            uc.keywords = ", ".join(keywords_args)
+            uc.keywords = ", ".join(rest)
             db.commit()
             await update.message.reply_text(
                 f"✅ <b>Фильтр @{username} установлен</b>\n\n"
-                f"<code>{uc.keywords}</code>\n\n"
-                f"Приходят только посты с этими словами.",
+                f"<code>{uc.keywords}</code>\n\nПриходят только посты с этими словами.",
                 parse_mode="HTML",
             )
     finally:
@@ -637,20 +685,18 @@ async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user = _get_or_create_user(db, update.effective_user)
         if not user.can_auto_summary:
             await update.message.reply_text(
-                "<b>📰 Дайджест недоступен</b>\n\n"
-                "Функция доступна на тарифе Pro 💎.",
+                "<b>📰 AI-режим недоступен</b>\n\n"
+                "Авто-саммари и дайджест доступны на тарифе Pro 💎.",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
             return
-        status = "включён ✅" if user.digest_enabled else "выключен ❌"
         await update.message.reply_text(
-            f"<b>📰 Ежедневный дайджест</b>\n\n"
-            f"Статус: {status}\n"
-            f"Время: {config.DIGEST_HOUR_UTC:02d}:00 UTC каждый день\n\n"
-            f"Или получите прямо сейчас 👇",
+            f"<b>📰 AI-режим</b>\n\n"
+            f"<b>Авто-саммари</b> ��� к��атко�� изложение при��одит сразу с к��ждым постом.\n"
+            f"<b>Дайджест</b> — сводка за день в {config.DIGEST_HOUR_UTC:02d}:00 UTC.",
             parse_mode="HTML",
-            reply_markup=digest_keyboard(user.digest_enabled),
+            reply_markup=digest_keyboard(user.digest_enabled, user.auto_summary),
         )
     finally:
         db.close()
@@ -709,19 +755,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         try:
             user = _get_or_create_user(db, update.effective_user)
             if not user.can_auto_summary:
-                await query.message.edit_text(
-                    "<b>🤖 Авто-саммари недоступно</b>\n\nФункция доступна на тарифе Pro 💎.",
-                    parse_mode="HTML",
-                    reply_markup=subscribe_keyboard(),
-                )
+                await query.answer("❌ Авто-саммари доступно только на Pro 💎", show_alert=True)
                 return
             user.auto_summary = not user.auto_summary
             db.commit()
-            status = "включено ✅" if user.auto_summary else "выключено ❌"
-            await query.message.edit_text(
-                f"<b>🤖 Авто-саммари</b>\n\nСтатус: {status}",
-                parse_mode="HTML",
-                reply_markup=auto_summary_keyboard(user.auto_summary),
+            await query.message.edit_reply_markup(
+                reply_markup=digest_keyboard(user.digest_enabled, user.auto_summary)
             )
         finally:
             db.close()
@@ -731,19 +770,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         try:
             user = _get_or_create_user(db, update.effective_user)
             if not user.can_auto_summary:
-                await query.message.edit_text(
-                    "<b>📰 Дайджест недоступен</b>\n\nФункция доступна на тарифе Pro 💎.",
-                    parse_mode="HTML",
-                    reply_markup=subscribe_keyboard(),
-                )
+                await query.answer("❌ Дайджест доступен только на Pro 💎", show_alert=True)
                 return
             user.digest_enabled = not user.digest_enabled
             db.commit()
-            status = "включён ✅" if user.digest_enabled else "выключен ❌"
-            await query.message.edit_text(
-                f"<b>📰 Ежедневный дайджест</b>\n\nСтатус: {status}",
-                parse_mode="HTML",
-                reply_markup=digest_keyboard(user.digest_enabled),
+            await query.message.edit_reply_markup(
+                reply_markup=digest_keyboard(user.digest_enabled, user.auto_summary)
             )
         finally:
             db.close()

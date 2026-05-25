@@ -80,11 +80,13 @@ def auto_summary_keyboard(enabled: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="toggle_auto_summary")]])
 
 
-def digest_keyboard(enabled: bool) -> InlineKeyboardMarkup:
-    label = "✅ Дайджест: ВКЛ" if enabled else "❌ Дайджест: ВЫКЛ"
+def digest_keyboard(digest_enabled: bool, auto_summary_enabled: bool) -> InlineKeyboardMarkup:
+    d_label = "✅ Дайджест каждый день: ВКЛ" if digest_enabled else "❌ Дайджест каждый день: ВЫКЛ"
+    a_label = "✅ Авто-саммари постов: ВКЛ" if auto_summary_enabled else "❌ Авто-саммари постов: ВЫКЛ"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(label, callback_data="toggle_digest")],
-        [InlineKeyboardButton("📨 Получить сейчас", callback_data="request_digest")],
+        [InlineKeyboardButton(d_label, callback_data="toggle_digest")],
+        [InlineKeyboardButton(a_label, callback_data="toggle_auto_summary")],
+        [InlineKeyboardButton("📨 Получить дайджест сейчас", callback_data="request_digest")],
     ])
 
 
@@ -95,6 +97,8 @@ def user_channels_keyboard(user_channels: list) -> InlineKeyboardMarkup:
         label = f"{status} @{uc.channel.username}"
         if uc.keywords:
             label += " 🔍"
+        if uc.ai_filter:
+            label += " 🤖"
         rows.append([
             InlineKeyboardButton(label, callback_data=f"toggle_uc:{uc.id}"),
             InlineKeyboardButton("🗑", callback_data=f"del_uc:{uc.id}"),

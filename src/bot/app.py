@@ -27,6 +27,7 @@ from src.bot.handlers import (
     cmd_channels,
     cmd_digest,
     cmd_filter,
+    cmd_help,
     cmd_quiet,
     cmd_refer,
     cmd_remove_channel,
@@ -66,6 +67,7 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("trial", cmd_trial))
