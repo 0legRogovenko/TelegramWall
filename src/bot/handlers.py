@@ -24,7 +24,7 @@ from src.bot.keyboards import (
 from src.bot.payments import send_invoice
 from src.config import config
 from src.database import get_session
-from src.models import Channel, Post, Subscription, User, UserChannel
+from src.models import Bookmark, Channel, Post, Subscription, User, UserChannel
 from src.services.summarizer import summarize
 
 
@@ -78,6 +78,16 @@ def _help_text() -> str:
 
         f"<b>4. Комфорт</b>\n"
         f"/quiet 23 9 — не беспокоить с 23:00 до 09:00 UTC\n\n"
+
+        f"<b>5. Закладки</b>\n"
+        f"/save ID — сохранить пост\n"
+        f"/saved — список закладок\n\n"
+
+        f"<b>6. Статистика</b>\n"
+        f"/stats — активность и топ каналов\n\n"
+
+        f"<b>7. AI-фильтр</b> <i>(Basic/Pro)</i>\n"
+        f"/aifilter @channel тема — только про нужную тему\n\n"
 
         f"{SEP}\n"
         f"<b>Тарифы</b>\n\n"
@@ -795,6 +805,232 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     )
         finally:
             db.close()
+
+
+# ── Bookmarks ─────────────────────────────────────────────────────────────────
+
+async def cmd_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: /save &lt;ID поста&gt;\nID указан под каждым постом.",
+            parse_mode="HTML",
+        )
+        return
+    try:
+        post_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом.")
+        return
+
+    db = get_session()
+    try:
+        user = _get_or_create_user(db, update.effective_user)
+        post = db.query(Post).filter_by(id=post_id).first()
+        if not post:
+            await update.message.reply_text(f"❌ Пост #{post_id} не найден.")
+            return
+        existing = db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first()
+        if existing:
+            await update.message.reply_text(f"📌 Пост #{post_id} уже в закладках.")
+            return
+        db.add(Bookmark(user_id=user.id, post_id=post_id))
+        db.commit()
+        await update.message.reply_text(
+            f"📌 <b>Пост #{post_id} сохранён</b>\n\nПосмотреть все: /saved",
+            parse_mode="HTML",
+        )
+    finally:
+        db.close()
+
+
+async def cmd_unsave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text("Использование: /unsave &lt;ID поста&gt;", parse_mode="HTML")
+        return
+    try:
+        post_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом.")
+        return
+
+    db = get_session()
+    try:
+        user = _get_or_create_user(db, update.effective_user)
+        bm = db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first()
+        if not bm:
+            await update.message.reply_text(f"Пост #{post_id} не в закладках.")
+            return
+        db.delete(bm)
+        db.commit()
+        await update.message.reply_text(f"🗑 Пост #{post_id} удалён из закладок.")
+    finally:
+        db.close()
+
+
+async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    db = get_session()
+    try:
+        user = _get_or_create_user(db, update.effective_user)
+        bookmarks = (
+            db.query(Bookmark)
+            .filter_by(user_id=user.id)
+            .order_by(Bookmark.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        if not bookmarks:
+            await update.message.reply_text(
+                "<b>📌 Закладки пусты</b>\n\nСохраняйте посты командой /save ID",
+                parse_mode="HTML",
+            )
+            return
+
+        lines = [f"<b>📌 Закладки</b> — {len(bookmarks)} постов"]
+        for bm in bookmarks:
+            post = bm.post
+            ch_name = post.channel.username if post.channel else "?"
+            date_str = bm.created_at.strftime("%d.%m  %H:%M") if bm.created_at else ""
+            preview = (post.text or "[медиа]")[:120]
+            if len(post.text or "") > 120:
+                preview += "…"
+            lines.append(
+                f"{SEP}\n"
+                f"📢 <b>@{ch_name}</b>  <i>{date_str}</i>\n"
+                f"{preview}\n"
+                f"/summary {post.id}  · /unsave {post.id}"
+            )
+        await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
+    finally:
+        db.close()
+
+
+# ── Statistics ────────────────────────────────────────────────────────────────
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from sqlalchemy import func as sqlfunc
+    db = get_session()
+    try:
+        user = _get_or_create_user(db, update.effective_user)
+        ucs = db.query(UserChannel).filter_by(user_id=user.id, is_active=True).all()
+
+        if not ucs:
+            await update.message.reply_text(
+                "<b>📊 Статистика</b>\n\nЕщё нет каналов.\nДобавьте первый: /add_channel @username",
+                parse_mode="HTML",
+            )
+            return
+
+        channel_ids = [uc.channel_id for uc in ucs]
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
+
+        total_posts = db.query(Post).filter(Post.channel_id.in_(channel_ids)).count()
+        week_posts = db.query(Post).filter(
+            Post.channel_id.in_(channel_ids), Post.created_at >= week_ago
+        ).count()
+        bookmarks_count = db.query(Bookmark).filter_by(user_id=user.id).count()
+
+        top = (
+            db.query(Channel.username, sqlfunc.count(Post.id).label("cnt"))
+            .join(Post, Post.channel_id == Channel.id)
+            .filter(Post.channel_id.in_(channel_ids), Post.created_at >= week_ago)
+            .group_by(Channel.username)
+            .order_by(sqlfunc.count(Post.id).desc())
+            .limit(3)
+            .all()
+        )
+
+        lines = [
+            "<b>📊 Ваша статистика</b>",
+            "",
+            f"📢 Каналов: <b>{len(ucs)}</b>",
+            f"📝 Постов всего: <b>{total_posts}</b>",
+            f"📅 За последние 7 дней: <b>{week_posts}</b>",
+            f"📌 Закладок: <b>{bookmarks_count}</b>",
+        ]
+        if top:
+            lines.append(SEP)
+            lines.append("<b>Топ каналов за неделю:</b>")
+            medals = ["🥇", "🥈", "🥉"]
+            for i, (username, cnt) in enumerate(top):
+                lines.append(f"{medals[i]} @{username} — {cnt} постов")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    finally:
+        db.close()
+
+
+# ── AI filter ─────────────────────────────────────────────────────────────────
+
+async def cmd_aifilter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "<b>🤖 AI-фильтр по теме</b>\n\n"
+            "Установить: /aifilter @channel тема\n"
+            "Пример: /aifilter @rbc_news только про экономику\n\n"
+            "Посмотреть: /aifilter @channel\n"
+            "Убрать: /aifilter @channel off\n\n"
+            "<i>AI оценивает каждый пост и пропускает только релевантные.</i>\n"
+            "<i>Требует Basic или Pro.</i>",
+            parse_mode="HTML",
+        )
+        return
+
+    username = context.args[0].lstrip("@").lower()
+    filter_args = context.args[1:]
+
+    db = get_session()
+    try:
+        user = _get_or_create_user(db, update.effective_user)
+        if not user.can_summary:
+            await update.message.reply_text(
+                "<b>🤖 AI-фильтр недоступен</b>\n\nФункция доступна на тарифах Basic и Pro.",
+                parse_mode="HTML",
+                reply_markup=subscribe_keyboard(),
+            )
+            return
+        channel = db.query(Channel).filter_by(username=username).first()
+        if not channel:
+            await update.message.reply_text(f"Канал @{username} не найден. Сначала добавьте его.")
+            return
+        uc = db.query(UserChannel).filter_by(user_id=user.id, channel_id=channel.id).first()
+        if not uc:
+            await update.message.reply_text(f"Канал @{username} не в вашем списке.")
+            return
+
+        if not filter_args:
+            if uc.ai_filter:
+                await update.message.reply_text(
+                    f"<b>🤖 AI-фильтр @{username}</b>\n\n<code>{uc.ai_filter}</code>\n\n"
+                    f"Убрать: /aifilter @{username} off",
+                    parse_mode="HTML",
+                )
+            else:
+                await update.message.reply_text(
+                    f"<b>🤖 AI-фильтр @{username}</b>\n\nНе установлен — приходят все посты.\n\n"
+                    f"Установить: /aifilter @{username} описание темы",
+                    parse_mode="HTML",
+                )
+            return
+
+        if filter_args[0].lower() == "off":
+            uc.ai_filter = None
+            db.commit()
+            await update.message.reply_text(
+                f"✅ <b>AI-фильтр @{username} удалён</b>\n\nТеперь приходят все посты.",
+                parse_mode="HTML",
+            )
+        else:
+            uc.ai_filter = " ".join(filter_args)
+            db.commit()
+            await update.message.reply_text(
+                f"✅ <b>AI-фильтр @{username} установлен</b>\n\n"
+                f"<code>{uc.ai_filter}</code>\n\n"
+                f"Каждый пост будет проверяться AI на соответствие теме.",
+                parse_mode="HTML",
+            )
+    finally:
+        db.close()
 
 
 # ── Reply keyboard button handlers ───────────────────────────────────────────

@@ -43,6 +43,10 @@ async def _async_main(loop: asyncio.AbstractEventLoop) -> None:
         BotCommand("refer",          "Реферальная ссылка"),
         BotCommand("status",         "Статус подписки"),
         BotCommand("subscribe",      "Оформить подписку"),
+        BotCommand("save",           "Сохранить пост в закладки"),
+        BotCommand("saved",          "Мои закладки"),
+        BotCommand("stats",          "Статистика каналов"),
+        BotCommand("aifilter",       "AI-фильтр по теме (Basic/Pro)"),
     ])
     logger.info("Bot commands menu set")
 

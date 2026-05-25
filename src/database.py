@@ -37,6 +37,17 @@ def init_db() -> None:
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referred_by INTEGER")
         # user_channels
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN keywords TEXT")
+        _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN ai_filter TEXT")
+        # bookmarks
+        _run_migration(conn, """
+            CREATE TABLE IF NOT EXISTS bookmarks (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(user_id, post_id)
+            )
+        """)
 
 
 def get_session():

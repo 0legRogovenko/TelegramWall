@@ -5,6 +5,7 @@ from sqlalchemy import (
     Integer, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 
 from src.database import Base
 
@@ -37,6 +38,9 @@ class User(Base):
         back_populates="user", order_by="Subscription.expires_at.desc()"
     )
     user_channels: Mapped[list["UserChannel"]] = relationship(back_populates="user")
+    bookmarks: Mapped[list["Bookmark"]] = relationship(
+        back_populates="user", order_by="Bookmark.created_at.desc()"
+    )
 
     @property
     def active_subscription(self) -> "Subscription | None":
@@ -107,7 +111,8 @@ class UserChannel(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    keywords: Mapped[str | None] = mapped_column(Text)   # comma-separated filter words
+    keywords: Mapped[str | None] = mapped_column(Text)
+    ai_filter: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped["User"] = relationship(back_populates="user_channels")
@@ -133,6 +138,21 @@ class Post(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     channel: Mapped["Channel"] = relationship(back_populates="posts")
+
+
+class Bookmark(Base):
+    __tablename__ = "bookmarks"
+    __table_args__ = (UniqueConstraint("user_id", "post_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="bookmarks")
+    post: Mapped["Post"] = relationship()
 
 
 class Subscription(Base):

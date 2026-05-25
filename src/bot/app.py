@@ -22,6 +22,7 @@ from src.bot.handlers import (
     callback_handler,
     cmd_add_channel,
     cmd_admin,
+    cmd_aifilter,
     cmd_autosummary,
     cmd_channels,
     cmd_digest,
@@ -29,11 +30,15 @@ from src.bot.handlers import (
     cmd_quiet,
     cmd_refer,
     cmd_remove_channel,
+    cmd_save,
+    cmd_saved,
     cmd_start,
+    cmd_stats,
     cmd_status,
     cmd_subscribe,
     cmd_summary,
     cmd_trial,
+    cmd_unsave,
     handle_text,
 )
 from src.bot.keyboards import BUTTON_ADD_CHANNEL, BUTTON_CHANNELS, BUTTON_DIGEST, BUTTON_SUMMARY
@@ -74,6 +79,11 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(CommandHandler("add_channel", cmd_add_channel))
     app.add_handler(CommandHandler("remove_channel", cmd_remove_channel))
     app.add_handler(CommandHandler("admin", cmd_admin))
+    app.add_handler(CommandHandler("save", cmd_save))
+    app.add_handler(CommandHandler("unsave", cmd_unsave))
+    app.add_handler(CommandHandler("saved", cmd_saved))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("aifilter", cmd_aifilter))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))

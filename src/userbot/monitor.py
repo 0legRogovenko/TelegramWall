@@ -1,6 +1,7 @@
 """Telethon userbot — monitors channels via polling + live events."""
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient, events
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 _client: TelegramClient | None = None
 POLL_INTERVAL = 30
+BATCH_WINDOW_SECS = 90
+
+# (tg_id, channel_id) → {"posts": [...], "label": str, "first_at": float}
+_batch_buffer: dict[tuple[int, int], dict] = {}
 
 
 def _get_media_type(message) -> str | None:
@@ -35,8 +40,8 @@ def _get_media_type(message) -> str | None:
     return None
 
 
-def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[int]:
-    """Return telegram_ids of subscribers who should receive this post right now."""
+def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int, str | None]]:
+    """Return (telegram_id, ai_filter) for subscribers who pass quiet/keyword checks."""
     now_hour = datetime.now(timezone.utc).hour
     ucs = db.query(UserChannel).filter_by(channel_id=channel_id, is_active=True).all()
     result = []
@@ -57,9 +62,9 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[int]:
             logger.debug("Skipping user %s (keyword filter)", user.telegram_id)
             continue
 
-        result.append(user.telegram_id)
+        result.append((user.telegram_id, uc.ai_filter))
 
-    logger.debug("Eligible subscribers for channel %s: %s", channel_id, result)
+    logger.debug("Eligible subscribers for channel %s: %s", channel_id, [r[0] for r in result])
     return result
 
 
@@ -99,11 +104,32 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
     if not subscriber_ids:
         return
 
-    logger.info("New post #%s from @%s → delivering to %d user(s)",
+    logger.info("New post #%s from @%s → %d candidate(s)",
                 post_id, channel.username, len(subscriber_ids))
 
-    for tg_id in subscriber_ids:
-        await _deliver_to_user(client, tg_id, msg, channel_label, post_id, text)
+    for tg_id, ai_filter in subscriber_ids:
+        # AI filter check (async, non-blocking)
+        if ai_filter and text:
+            try:
+                from src.services.summarizer import is_relevant
+                relevant = await asyncio.to_thread(is_relevant, text, ai_filter)
+                if not relevant:
+                    logger.debug("AI filter skipped post #%s for user %s", post_id, tg_id)
+                    continue
+            except Exception as exc:
+                logger.debug("AI filter error for user %s: %s — delivering anyway", tg_id, exc)
+
+        # Buffer for batch delivery
+        key = (tg_id, channel.id)
+        if key not in _batch_buffer:
+            _batch_buffer[key] = {
+                "posts": [],
+                "label": channel_label,
+                "first_at": time.monotonic(),
+            }
+        _batch_buffer[key]["posts"].append({"post_id": post_id, "text": text, "msg": msg})
+        logger.debug("Buffered post #%s for user %s (batch size=%d)",
+                     post_id, tg_id, len(_batch_buffer[key]["posts"]))
 
 
 async def _deliver_to_user(
@@ -191,6 +217,56 @@ async def _send_summary(
         )
     except Exception as exc:
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
+
+
+async def _send_batch(client: TelegramClient, tg_id: int, entry: dict) -> None:
+    from src.bot.app import ptb_app
+    posts = entry["posts"]
+    label = entry["label"]
+
+    if len(posts) == 1:
+        p = posts[0]
+        await _deliver_to_user(client, tg_id, p["msg"], label, p["post_id"], p["text"])
+        return
+
+    if ptb_app is None:
+        return
+
+    sep = "―――――――――――――――"
+    lines = [f"📢 <b>{label}</b> — {len(posts)} новых поста"]
+    for i, p in enumerate(posts, 1):
+        preview = (p["text"] or "[медиа]")[:120]
+        if len(p["text"] or "") > 120:
+            preview += "…"
+        lines.append(f"{sep}\n{i}. {preview}\n/summary {p['post_id']}")
+    try:
+        await ptb_app.bot.send_message(
+            chat_id=tg_id,
+            text="\n\n".join(lines),
+            parse_mode="HTML",
+        )
+        logger.info("✅ Batch (%d posts) from %s → user %s", len(posts), label, tg_id)
+    except Exception as exc:
+        logger.warning("Cannot send batch to user %s: %s", tg_id, exc)
+
+
+async def _batch_flush_loop(client: TelegramClient) -> None:
+    while True:
+        await asyncio.sleep(30)
+        now = time.monotonic()
+        to_flush = [
+            key for key, entry in list(_batch_buffer.items())
+            if now - entry["first_at"] >= BATCH_WINDOW_SECS
+        ]
+        for key in to_flush:
+            entry = _batch_buffer.pop(key, None)
+            if not entry:
+                continue
+            tg_id, _ = key
+            try:
+                await _send_batch(client, tg_id, entry)
+            except Exception as exc:
+                logger.warning("Batch flush error for user %s: %s", tg_id, exc)
 
 
 async def _build_and_send_digest(telegram_id: int, db) -> bool:
@@ -388,6 +464,7 @@ async def start_userbot() -> TelegramClient:
     loop = asyncio.get_event_loop()
     loop.create_task(_poll_channels(client))
     loop.create_task(_digest_loop())
+    loop.create_task(_batch_flush_loop(client))
 
     _client = client
     db = get_session()
