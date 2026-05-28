@@ -164,7 +164,7 @@ async def _deliver_to_user(
                 time_str = msg.date.strftime("%d.%m  %H:%M") if msg.date else ""
                 header = f"📢 <b>{channel_label}</b>"
                 if time_str:
-                    header += f"  <i>· {time_str} UTC</i>"
+                    header += f" <i>· {time_str} UTC</i>"
                 await ptb_app.bot.send_message(
                     chat_id=tg_id,
                     text=f"{header}\n\n{text}\n\n<i>#{post_id}</i>",
@@ -176,7 +176,9 @@ async def _deliver_to_user(
                 logger.warning("Cannot deliver post #%s to user %s: %s", post_id, tg_id, exc)
                 return
         else:
-            logger.warning("Post #%s has no text and could not be forwarded to user %s", post_id, tg_id)
+            logger.warning(
+                "Post #%s has no text and could not be forwarded to user %s", post_id, tg_id
+            )
             return
 
     db = get_session()
@@ -211,7 +213,7 @@ async def _send_summary(
             chat_id=tg_id,
             text=(
                 f"📝 <b>Саммари</b> из <b>{channel_label}</b>:\n\n{post.summary}\n\n"
-                f"Запросить снова: /summary {post_id}"
+                f"Запросить снова: /summary {post_id}"  # noqa: E231
             ),
             parse_mode="HTML",
         )
@@ -307,7 +309,7 @@ async def _build_and_send_digest(telegram_id: int, db) -> bool:
             preview += "…"
         lines.append(
             f"{sep}\n"
-            f"{i}. 📢 <b>@{ch_name}</b>  <i>{time_str} UTC</i>\n"
+            f"{i}. 📢 <b>@{ch_name}</b> <i>{time_str} UTC</i>\n"
             f"{preview}\n"
             f"/summary {post.id}"
         )
@@ -393,7 +395,9 @@ async def _poll_channels(client: TelegramClient) -> None:
                 messages = await client.get_messages(tg_channel_id, limit=20, min_id=min_id)
                 if messages:
                     logger.info("Poll @%s: %d new message(s)", username, len(messages))
-                    ch_obj = Channel(id=ch_id, telegram_id=tg_channel_id, username=username, title=title)
+                    ch_obj = Channel(
+                        id=ch_id, telegram_id=tg_channel_id, username=username, title=title
+                    )
                     for msg in reversed(messages):
                         await _process_message(client, ch_obj, msg)
             except Exception as exc:
@@ -451,7 +455,9 @@ async def start_userbot() -> TelegramClient:
 
     if config.SESSION_STRING:
         from telethon.sessions import StringSession
-        client = TelegramClient(StringSession(config.SESSION_STRING), config.API_ID, config.API_HASH)
+        client = TelegramClient(
+            StringSession(config.SESSION_STRING), config.API_ID, config.API_HASH
+        )
         await client.start()
         logger.info("Userbot started from SESSION_STRING")
     else:

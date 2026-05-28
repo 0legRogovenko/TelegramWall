@@ -17,7 +17,9 @@ class Config:
     PHONE: str = os.environ["TELEGRAM_PHONE"]
     SESSION_NAME: str = os.getenv("TELEGRAM_SESSION_NAME", "userbot")
     SESSION_PATH: str = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "sessions", os.getenv("TELEGRAM_SESSION_NAME", "userbot")
+        os.path.dirname(os.path.dirname(__file__)),
+        "sessions",
+        os.getenv("TELEGRAM_SESSION_NAME", "userbot"),
     )
     SESSION_STRING: str | None = os.getenv("TELEGRAM_SESSION_STRING")
 
@@ -31,8 +33,12 @@ class Config:
     # Subscription tiers
     SUBSCRIPTION_PRICE_BASIC_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_BASIC_STARS", "149"))
     SUBSCRIPTION_PRICE_PRO_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_PRO_STARS", "499"))
-    SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS", "1430"))
-    SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS", "4790"))
+    SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS: int = int(
+        os.getenv("SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS", "1430")
+    )
+    SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS: int = int(
+        os.getenv("SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS", "4790")
+    )
     SUBSCRIPTION_DAYS: int = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
     CHANNEL_LIMIT_FREE: int = int(os.getenv("CHANNEL_LIMIT_FREE", "3"))
     CHANNEL_LIMIT_BASIC: int = int(os.getenv("CHANNEL_LIMIT_BASIC", "10"))

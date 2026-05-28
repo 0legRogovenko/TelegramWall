@@ -5,32 +5,32 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.config import config
-from src.database import get_session
+from src.database import db_session
 from src.models import Subscription, User
 
 _TIER_META = {
     "basic": {
-        "label":       "Basic ⭐",
-        "price":       lambda: config.SUBSCRIPTION_PRICE_BASIC_STARS,
-        "days":        30,
+        "label": "Basic ⭐",
+        "price": lambda: config.SUBSCRIPTION_PRICE_BASIC_STARS,
+        "days": 30,
         "description": "10 каналов + саммари по запросу — 30 дней.",
     },
     "pro": {
-        "label":       "Pro 💎",
-        "price":       lambda: config.SUBSCRIPTION_PRICE_PRO_STARS,
-        "days":        30,
+        "label": "Pro 💎",
+        "price": lambda: config.SUBSCRIPTION_PRICE_PRO_STARS,
+        "days": 30,
         "description": "∞ каналов + авто-саммари — 30 дней.",
     },
     "annual_basic": {
-        "label":       "Basic Годовой ⭐",
-        "price":       lambda: config.SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS,
-        "days":        365,
+        "label": "Basic Годовой ⭐",
+        "price": lambda: config.SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS,
+        "days": 365,
         "description": "10 каналов + саммари по запросу — 365 дней (скидка 20%).",
     },
     "annual_pro": {
-        "label":       "Pro Годовой 💎",
-        "price":       lambda: config.SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS,
-        "days":        365,
+        "label": "Pro Годовой 💎",
+        "price": lambda: config.SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS,
+        "days": 365,
         "description": "∞ каналов + авто-саммари — 365 дней (скидка 20%).",
     },
 }
@@ -46,10 +46,10 @@ async def send_invoice(
         chat_id=update.effective_chat.id,
         title=f"Подписка TelegramWall {meta['label']}",
         description=meta["description"],
-        payload=f"subscribe:{tier}",
+        payload=f"subscribe:{tier}",  # noqa: E231
         provider_token="",
         currency="XTR",
-        prices=[{"label": meta["label"], "amount": meta["price"]()}],
+        prices=[{"label": meta["label"], "amount": meta["price"]()}],  # noqa: E231
     )
 
 
@@ -65,21 +65,19 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
     tier = payload.split(":")[1] if payload.startswith("subscribe:") else "basic"
     meta = _TIER_META.get(tier, _TIER_META["basic"])
 
-    db = get_session()
-    try:
+    with db_session() as db:
         user = db.query(User).filter_by(telegram_id=telegram_id).first()
         if not user:
             return
 
         expires_at = datetime.now(timezone.utc) + timedelta(days=meta["days"])
-        sub = Subscription(
+        db.add(Subscription(
             user_id=user.id,
             tier=tier,
             stars_paid=payment.total_amount,
             payment_charge_id=payment.telegram_payment_charge_id,
             expires_at=expires_at,
-        )
-        db.add(sub)
+        ))
         db.commit()
 
         perks = (
@@ -87,10 +85,8 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
             if tier in ("pro", "annual_pro")
             else "✅ Саммари по запросу (/summary)"
         )
+        date_str = expires_at.strftime("%d.%m.%Y")
         await update.message.reply_text(
-            f"✅ Подписка <b>{meta['label']}</b> активирована до {expires_at.strftime('%d.%m.%Y')}!\n\n"
-            f"{perks}",
+            f"✅ Подписка <b>{meta['label']}</b> активирована до {date_str}!\n\n{perks}",
             parse_mode="HTML",
         )
-    finally:
-        db.close()

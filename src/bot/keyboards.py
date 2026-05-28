@@ -1,9 +1,14 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
-BUTTON_CHANNELS    = "📋 Мои каналы"
+BUTTON_CHANNELS = "📋 Мои каналы"
 BUTTON_ADD_CHANNEL = "➕ Добавить канал"
-BUTTON_SUMMARY     = "📝 Саммари поста"
-BUTTON_DIGEST      = "📰 Дайджест"
+BUTTON_SUMMARY = "📝 Саммари поста"
+BUTTON_DIGEST = "📰 Дайджест"
 
 TIER_LABEL = {
     "basic":        "Basic ⭐",
@@ -66,23 +71,31 @@ def subscribe_keyboard() -> InlineKeyboardMarkup:
 def subscription_active_keyboard(tier: str = "basic") -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(
         f"🔄 Продлить {TIER_LABEL.get(tier, tier)}",
-        callback_data=f"subscribe:{tier}",
+        callback_data=f"subscribe:{tier}",  # noqa: E231 — f-string colon is not a dict colon
     )]]
     if tier == "basic":
-        rows.append([InlineKeyboardButton("⬆️ Улучшить до Pro 💎", callback_data="subscribe:pro")])
+        rows.append([InlineKeyboardButton(
+            "⬆️ Улучшить до Pro 💎", callback_data="subscribe:pro"
+        )])
     if tier == "annual_basic":
-        rows.append([InlineKeyboardButton("⬆️ Улучшить до Pro Годовой 💎", callback_data="subscribe:annual_pro")])
+        rows.append([InlineKeyboardButton(
+            "⬆️ Улучшить до Pro Годовой 💎", callback_data="subscribe:annual_pro"
+        )])
     return InlineKeyboardMarkup(rows)
 
 
 def auto_summary_keyboard(enabled: bool) -> InlineKeyboardMarkup:
     label = "✅ Авто-саммари: ВКЛ" if enabled else "❌ Авто-саммари: ВЫКЛ"
-    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="toggle_auto_summary")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(label, callback_data="toggle_auto_summary")]
+    ])
 
 
 def digest_keyboard(digest_enabled: bool, auto_summary_enabled: bool) -> InlineKeyboardMarkup:
     d_label = "✅ Дайджест каждый день: ВКЛ" if digest_enabled else "❌ Дайджест каждый день: ВЫКЛ"
-    a_label = "✅ Авто-саммари постов: ВКЛ" if auto_summary_enabled else "❌ Авто-саммари постов: ВЫКЛ"
+    a_label = (
+        "✅ Авто-саммари постов: ВКЛ" if auto_summary_enabled else "❌ Авто-саммари постов: ВЫКЛ"
+    )
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(d_label, callback_data="toggle_digest")],
         [InlineKeyboardButton(a_label, callback_data="toggle_auto_summary")],
@@ -100,7 +113,8 @@ def user_channels_keyboard(user_channels: list) -> InlineKeyboardMarkup:
         if uc.ai_filter:
             label += " 🤖"
         rows.append([
-            InlineKeyboardButton(label, callback_data=f"toggle_uc:{uc.id}"),
-            InlineKeyboardButton("🗑", callback_data=f"del_uc:{uc.id}"),
+            InlineKeyboardButton(label, callback_data=f"toggle_uc:{uc.id}"),  # noqa: E231
+            InlineKeyboardButton("🗑", callback_data=f"del_uc:{uc.id}"),  # noqa: E231
         ])
+
     return InlineKeyboardMarkup(rows)

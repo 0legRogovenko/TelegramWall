@@ -15,7 +15,7 @@ def _now() -> datetime:
 
 
 _PAID_TIERS = ("basic", "pro", "annual_basic", "annual_pro")
-_PRO_TIERS  = ("pro", "annual_pro")
+_PRO_TIERS = ("pro", "annual_pro")
 
 
 class User(Base):

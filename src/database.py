@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, scoped_session
 
@@ -27,7 +29,10 @@ def init_db() -> None:
 
     with engine.connect() as conn:
         # subscriptions
-        _run_migration(conn, "ALTER TABLE subscriptions ADD COLUMN tier VARCHAR(16) DEFAULT 'basic'")
+        _run_migration(
+            conn,
+            "ALTER TABLE subscriptions ADD COLUMN tier VARCHAR(16) DEFAULT 'basic'",
+        )
         # users — new columns
         _run_migration(conn, "ALTER TABLE users ADD COLUMN digest_enabled BOOLEAN DEFAULT FALSE")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")
@@ -52,3 +57,13 @@ def init_db() -> None:
 
 def get_session():
     return Session()
+
+
+@contextmanager
+def db_session():
+    """Context manager for a DB session — closes automatically on exit."""
+    db = Session()
+    try:
+        yield db
+    finally:
+        db.close()
