@@ -23,14 +23,18 @@ class Config:
     )
     SESSION_STRING: str | None = os.getenv("TELEGRAM_SESSION_STRING")
 
-    # Anthropic
-    ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
+    # Anthropic (optional — /summary and AI filter won't work without it)
+    ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
 
     # Database
     DATABASE_URL: str = os.environ["DATABASE_URL"]
 
-    # Subscription tiers
+    # YooKassa (Telegram Payments)
+    # Set this to enable real RUB payments; leave empty to use Telegram Stars fallback.
+    YOOKASSA_PROVIDER_TOKEN: str = os.getenv("YOOKASSA_PROVIDER_TOKEN", "")
+
+    # Subscription tiers — Stars (XTR, used when YOOKASSA_PROVIDER_TOKEN is not set)
     SUBSCRIPTION_PRICE_BASIC_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_BASIC_STARS", "149"))
     SUBSCRIPTION_PRICE_PRO_STARS: int = int(os.getenv("SUBSCRIPTION_PRICE_PRO_STARS", "499"))
     SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS: int = int(
@@ -38,6 +42,17 @@ class Config:
     )
     SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS: int = int(
         os.getenv("SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS", "4790")
+    )
+
+    # Subscription tiers — RUB in kopecks (used when YOOKASSA_PROVIDER_TOKEN is set)
+    # Defaults: Basic 199₽/mo, Pro 499₽/mo; annual plans ~20% off
+    SUBSCRIPTION_PRICE_BASIC_RUB: int = int(os.getenv("SUBSCRIPTION_PRICE_BASIC_RUB", "19900"))
+    SUBSCRIPTION_PRICE_PRO_RUB: int = int(os.getenv("SUBSCRIPTION_PRICE_PRO_RUB", "49900"))
+    SUBSCRIPTION_PRICE_ANNUAL_BASIC_RUB: int = int(
+        os.getenv("SUBSCRIPTION_PRICE_ANNUAL_BASIC_RUB", "199000")
+    )
+    SUBSCRIPTION_PRICE_ANNUAL_PRO_RUB: int = int(
+        os.getenv("SUBSCRIPTION_PRICE_ANNUAL_PRO_RUB", "479000")
     )
     SUBSCRIPTION_DAYS: int = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
     CHANNEL_LIMIT_FREE: int = int(os.getenv("CHANNEL_LIMIT_FREE", "3"))
