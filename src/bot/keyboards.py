@@ -24,7 +24,7 @@ TIER_ICON = {
     "free": "",
 }
 
-SEP = "―――――――――――――――"
+SEP = "──────────────────"
 
 
 def main_menu() -> ReplyKeyboardMarkup:
@@ -46,23 +46,22 @@ def start_keyboard() -> InlineKeyboardMarkup:
 
 
 def subscribe_keyboard() -> InlineKeyboardMarkup:
-    from src.config import config
-    c = config
+    from src.bot.payments import price_label
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            f"⭐ Basic — {c.SUBSCRIPTION_PRICE_BASIC_STARS} Stars / мес",
+            f"⭐ Basic — {price_label('basic')} / мес",
             callback_data="subscribe:basic",
         )],
         [InlineKeyboardButton(
-            f"💎 Pro — {c.SUBSCRIPTION_PRICE_PRO_STARS} Stars / мес",
+            f"💎 Pro — {price_label('pro')} / мес",
             callback_data="subscribe:pro",
         )],
         [InlineKeyboardButton(
-            f"📅 Basic год — {c.SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS} Stars  −20%",
+            f"📅 Basic год — {price_label('annual_basic')}  −20%",
             callback_data="subscribe:annual_basic",
         )],
         [InlineKeyboardButton(
-            f"📅 Pro год — {c.SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS} Stars  −20%",
+            f"📅 Pro год — {price_label('annual_pro')}  −20%",
             callback_data="subscribe:annual_pro",
         )],
     ])

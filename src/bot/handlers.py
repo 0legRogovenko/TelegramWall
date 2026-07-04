@@ -17,7 +17,7 @@ from src.bot.keyboards import (
     subscription_active_keyboard,
     user_channels_keyboard,
 )
-from src.bot.payments import send_invoice
+from src.bot.payments import price_label, send_invoice
 from src.config import config
 from src.database import db_session
 from src.models import Bookmark, Channel, Post, Subscription, User, UserChannel
@@ -59,40 +59,36 @@ def _ensure_referral_code(db, user: User) -> str:
 
 def _help_text() -> str:
     return (
-        "<b>📖 Как пользоваться TelegramWall</b>\n\n"
+        "📖 <b>TelegramWall — быстрый старт</b>\n\n"
 
-        "<b>1. Добавьте каналы</b>\n"
-        "/add_channel @username\n"
-        "Новые посты начнут приходить сюда автоматически.\n\n"
+        "<b>Каналы</b>\n"
+        "  <code>/add_channel @username</code> — добавить\n"
+        "  <code>/channels</code> — список и управление\n\n"
 
-        "<b>2. Управляйте каналами</b>\n"
-        "/channels — список с кнопками вкл/выкл/удалить\n"
-        "/filter @channel слово — фильтр по ключевым словам\n"
-        "/filter @channel ai тема — AI-фильтр по смыслу\n\n"
+        "<b>Фильтры</b>\n"
+        "  <code>/filter @channel слово</code> — по ключевым словам\n"
+        "  <code>/filter @channel ai тема</code> — по смыслу <i>(Basic+)</i>\n\n"
 
-        "<b>3. AI-саммари</b>\n"
-        "/summary ID — краткое изложение конкретного поста\n"
-        "/digest — авто-саммари и дайджест <i>(Pro)</i>\n\n"
+        "<b>AI-саммари</b>\n"
+        "  <code>/summary ID</code> — краткий пересказ поста\n"
+        "  <code>/digest</code> — авто-саммари и дайджест <i>(Pro)</i>\n\n"
 
-        "<b>4. Комфорт</b>\n"
-        "/quiet 23 9 — не беспокоить с 23:00 до 09:00 UTC\n\n"
+        "<b>Закладки</b>\n"
+        "  <code>/save ID</code> — сохранить  ·  <code>/saved</code> — список\n\n"
 
-        "<b>5. Закладки</b>\n"
-        "/save ID — сохранить пост\n"
-        "/saved — список закладок\n\n"
-
-        "<b>6. Статистика</b>\n"
-        "/stats — активность и топ каналов\n\n"
+        "<b>Комфорт</b>\n"
+        "  <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC\n"
+        "  <code>/stats</code> — ваша статистика\n\n"
 
         f"{SEP}\n"
-        "<b>Тарифы</b>\n\n"
+        "<b>Тарифы</b>\n"
         f"  Free — до {config.CHANNEL_LIMIT_FREE} каналов\n"
-        f"⭐ Basic — до {config.CHANNEL_LIMIT_BASIC} каналов + саммари\n"
-        f"     {config.SUBSCRIPTION_PRICE_BASIC_STARS} Stars/мес\n"
-        "💎 Pro — ∞ каналов + авто-саммари + дайджест\n"
-        f"     {config.SUBSCRIPTION_PRICE_PRO_STARS} Stars/мес\n\n"
-        f"/trial — 3 дня Pro бесплатно\n"
-        f"/refer — пригласить друга (+{config.REFERRAL_BONUS_DAYS} дней за каждого)"
+        f"  ⭐ Basic — до {config.CHANNEL_LIMIT_BASIC} каналов + саммари\n"
+        f"    {price_label('basic')} / мес\n"
+        "  💎 Pro — ∞ каналов + авто-саммари + дайджест\n"
+        f"    {price_label('pro')} / мес\n\n"
+        "<code>/trial</code> — 3 дня Pro бесплатно\n"
+        f"<code>/refer</code> — пригласить → +{config.REFERRAL_BONUS_DAYS} дней"
     )
 
 
@@ -127,9 +123,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     await ptb_app.bot.send_message(
                         chat_id=referrer.telegram_id,
                         text=(
-                            f"🎁 <b>Новый реферал!</b>\n\n"
-                            "По вашей ссылке зарегистрировался пользователь.\n"
-                            f"+{config.REFERRAL_BONUS_DAYS} дней Basic начислено."
+                            f"🎁 <b>+{config.REFERRAL_BONUS_DAYS} дней Basic!</b>\n\n"
+                            "По вашей реферальной ссылке зарегистрировался новый пользователь."
                         ),
                         parse_mode="HTML",
                     )
@@ -141,23 +136,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             icon = TIER_ICON.get(tier, "")
             label = TIER_LABEL.get(tier, tier)
             text = (
-                f"👋 Привет, {name}!\n\n"
-                f"{icon} <b>{label}</b> активна до {expires}\n\n"
+                f"👋 <b>Привет, {name}!</b>\n\n"
+                f"{icon} <b>{label}</b> активна до <b>{expires}</b>\n\n"
                 f"{SEP}\n"
-                "Ваши каналы: /channels\n"
-                "Добавить канал: /add_channel @username\n"
-                "Саммари поста: /summary ID\n"
-                "Статус: /status"
+                "<code>/channels</code> — мои каналы\n"
+                "<code>/add_channel @username</code> — добавить\n"
+                "<code>/summary ID</code> — саммари поста"
             )
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_menu())
         else:
             text = (
-                f"👋 Привет, {name}!\n\n"
-                "<b>TelegramWall</b> — агрегатор Telegram-каналов.\n"
-                "Добавляйте каналы, и новые посты будут приходить прямо сюда.\n\n"
+                f"👋 <b>Привет, {name}!</b>\n\n"
+                "<b>TelegramWall</b> следит за Telegram-каналами вместо вас — "
+                "новые посты приходят прямо в этот чат.\n\n"
                 f"{SEP}\n"
-                "Начните с команды:\n"
-                "/add_channel @username"
+                "Начните с добавления канала:\n"
+                "<code>/add_channel @username</code>"
             )
             await update.message.reply_text(
                 text, parse_mode="HTML", reply_markup=start_keyboard(),
@@ -180,24 +174,26 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             limit_str = "∞" if limit is None else str(limit)
 
             lines = [
+                "📋 <b>Статус аккаунта</b>\n",
                 f"{icon} <b>{label}</b>",
-                "",
-                f"📅 Активна до <b>{expires}</b>",
+                f"  📅 Активна до <b>{expires}</b>",
+                f"  📢 Каналов: до {limit_str}",
                 SEP,
-                f"📢 Каналов: до {limit_str}",
             ]
             if user.can_summary:
-                lines.append("📝 Саммари по запросу ✅")
+                lines.append("  📝 Саммари по запросу ✅")
             if user.can_auto_summary:
-                lines.append("🤖 Авто-саммари ✅")
-                lines.append("📰 Дайджест ✅")
+                lines.append("  🤖 Авто-саммари ✅")
+                lines.append("  📰 Дайджест ✅")
             else:
-                lines.append("🤖 Авто-саммари — <i>только Pro</i>")
-                lines.append("📰 Дайджест — <i>только Pro</i>")
+                lines.append("  🤖 Авто-саммари — <i>только Pro</i>")
+                lines.append("  📰 Дайджест — <i>только Pro</i>")
 
             if user.quiet_start is not None:
-                quiet = f"🔕 Тихий режим: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00 UTC"
-                lines += [SEP, quiet]
+                lines += [
+                    SEP,
+                    f"  🔕 Тихий режим: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00 UTC",
+                ]
 
             await update.message.reply_text(
                 "\n".join(lines),
@@ -209,12 +205,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 db.query(UserChannel).filter_by(user_id=user.id, is_active=True).count()
             )
             await update.message.reply_text(
-                "<b>Статус подписки</b>\n\n"
-                f"Тариф: Free\n"
-                f"📢 Каналов: {active_count} / {config.CHANNEL_LIMIT_FREE}\n"
-                "📝 Саммари: недоступно\n\n"
+                "📋 <b>Статус аккаунта</b>\n\n"
+                "  Тариф: Free\n"
+                f"  📢 Каналов: <b>{active_count} / {config.CHANNEL_LIMIT_FREE}</b>\n"
+                "  📝 Саммари: недоступно\n\n"
                 f"{SEP}\n"
-                "🆓 Попробуйте Pro бесплатно — /trial",
+                "🎁 Попробуйте Pro бесплатно: <code>/trial</code>",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
@@ -222,14 +218,16 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "<b>Тарифы TelegramWall</b>\n\n"
-        f"  <b>Free</b> — до {config.CHANNEL_LIMIT_FREE} каналов, без AI\n\n"
-        f"⭐ <b>Basic</b> — {config.SUBSCRIPTION_PRICE_BASIC_STARS} Stars / 30 дней\n"
-        f"   до {config.CHANNEL_LIMIT_BASIC} каналов + саммари по запросу\n\n"
-        f"💎 <b>Pro</b> — {config.SUBSCRIPTION_PRICE_PRO_STARS} Stars / 30 дней\n"
-        "   ∞ каналов + авто-саммари + дайджест\n\n"
-        "📅 Годовые тарифы со скидкой 20% тоже доступны.\n\n"
-        "🆓 Начните бесплатно: /trial",
+        "💳 <b>Тарифы TelegramWall</b>\n\n"
+        f"  Free — до {config.CHANNEL_LIMIT_FREE} каналов, без AI\n\n"
+        f"{SEP}\n"
+        f"  ⭐ <b>Basic</b> — {price_label('basic')} / 30 дней\n"
+        f"    до {config.CHANNEL_LIMIT_BASIC} каналов · саммари по запросу\n\n"
+        f"  💎 <b>Pro</b> — {price_label('pro')} / 30 дней\n"
+        "    ∞ каналов · авто-саммари · дайджест\n\n"
+        "  📅 Годовые тарифы — скидка 20%\n\n"
+        f"{SEP}\n"
+        "🆓 Попробовать бесплатно: <code>/trial</code>",
         parse_mode="HTML",
         reply_markup=subscribe_keyboard(),
     )
@@ -240,15 +238,18 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = _get_or_create_user(db, update.effective_user)
         if user.trial_used:
             await update.message.reply_text(
-                "<b>Пробный период недоступен</b>\n\n"
-                "Вы уже использовали бесплатный период.\n"
+                "⚠️ <b>Пробный период уже использован</b>\n\n"
                 "Оформите подписку, чтобы продолжить:",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
             return
         if user.has_subscription:
-            await update.message.reply_text("У вас уже есть активная подписка.")
+            await update.message.reply_text(
+                "ℹ️ У вас уже есть активная подписка.\n\n"
+                "Используйте <code>/status</code> для просмотра.",
+                parse_mode="HTML",
+            )
             return
 
         expires_at = datetime.now(timezone.utc) + timedelta(days=config.TRIAL_DAYS)
@@ -257,12 +258,12 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         db.commit()
         await update.message.reply_text(
             f"🎉 <b>Pro 💎 активирован!</b>\n\n"
-            f"Пробный период: {config.TRIAL_DAYS} дня\n"
-            f"Действует до: {expires_at.strftime('%d.%m.%Y')}\n\n"
+            f"  Срок: {config.TRIAL_DAYS} дня\n"
+            f"  До: <b>{expires_at.strftime('%d.%m.%Y')}</b>\n\n"
             f"{SEP}\n"
             "Теперь доступно:\n"
-            "🤖 Авто-саммари + дайджест — /digest\n"
-            "📢 Неограниченно каналов",
+            "  📰 Дайджест и авто-саммари — <code>/digest</code>\n"
+            "  📢 Неограниченно каналов",
             parse_mode="HTML",
             reply_markup=main_menu(),
         )
@@ -275,9 +276,9 @@ async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         bot_info = await context.bot.get_me()
         link = f"https://t.me/{bot_info.username}?start=ref_{code}"
         await update.message.reply_text(
-            "<b>🔗 Реферальная программа</b>\n\n"
-            "Поделитесь ссылкой — за каждого нового пользователя "
-            f"вы получите <b>+{config.REFERRAL_BONUS_DAYS} дней</b> Basic подписки.\n\n"
+            "🔗 <b>Реферальная программа</b>\n\n"
+            f"За каждого нового пользователя по вашей ссылке — "
+            f"<b>+{config.REFERRAL_BONUS_DAYS} дней</b> Basic.\n\n"
             f"{SEP}\n"
             "Ваша ссылка:\n"
             f"<code>{link}</code>",
@@ -290,9 +291,8 @@ async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "<b>Добавление канала</b>\n\n"
-            "Использование: /add_channel @username\n"
-            "Пример: /add_channel @durov",
+            "📢 <b>Добавление канала</b>\n\n"
+            "Пример: <code>/add_channel @durov</code>",
             parse_mode="HTML",
         )
         return
@@ -307,8 +307,8 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             tier = user.subscription_tier
             upgrade = "Оформите подписку:" if tier == "free" else "Перейдите на Pro 💎:"
             await update.message.reply_text(
-                f"❌ <b>Лимит каналов достигнут</b>\n\n"
-                f"Ваш тариф: {TIER_LABEL.get(tier, tier)} — до {limit} каналов\n\n"
+                f"❌ <b>Лимит каналов</b>\n\n"
+                f"  {TIER_LABEL.get(tier, tier)} — до <b>{limit}</b> каналов.\n\n"
                 f"{upgrade}",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
@@ -322,7 +322,9 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if existing:
             if existing.is_active:
-                await update.message.reply_text(f"Канал @{username} уже в вашем списке.")
+                await update.message.reply_text(
+                    f"ℹ️ Канал <b>@{username}</b> уже в вашем списке.", parse_mode="HTML"
+                )
             else:
                 existing.is_active = True
                 db.commit()
@@ -336,8 +338,8 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         db.commit()
         await update.message.reply_text(
             f"✅ <b>@{username} добавлен</b>\n\n"
-            "Новые посты будут приходить сюда.\n"
-            f"Фильтр: /filter @{username} слово",
+            "Новые посты будут приходить сюда.\n\n"
+            f"💡 Настроить фильтр: <code>/filter @{username}</code>",
             parse_mode="HTML",
         )
 
@@ -358,8 +360,8 @@ async def cmd_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         if not ucs:
             await update.message.reply_text(
-                "<b>Каналы не добавлены</b>\n\n"
-                "Добавьте первый канал:\n/add_channel @username",
+                "📋 <b>Каналы не добавлены</b>\n\n"
+                "Добавьте первый:\n<code>/add_channel @username</code>",
                 parse_mode="HTML",
             )
             return
@@ -368,9 +370,9 @@ async def cmd_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         limit_str = "∞" if limit is None else str(limit)
         active = sum(1 for uc in ucs if uc.is_active)
         await update.message.reply_text(
-            f"<b>📋 Мои каналы</b>\n\n"
-            f"Активных: {active} / {limit_str}\n\n"
-            "✅ вкл  ⏸ выкл  🔍 фильтр  🗑 удалить",
+            f"📋 <b>Мои каналы</b>  <i>{active} / {limit_str}</i>\n\n"
+            "Нажмите — вкл/выкл  ·  🗑 — удалить\n"
+            "🔍 ключевые слова  ·  🤖 AI-фильтр",
             parse_mode="HTML",
             reply_markup=user_channels_keyboard(ucs),
         )
@@ -378,7 +380,9 @@ async def cmd_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def cmd_remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
-        await update.message.reply_text("Использование: /remove_channel @username")
+        await update.message.reply_text(
+            "Использование: <code>/remove_channel @username</code>", parse_mode="HTML"
+        )
         return
 
     username = context.args[0].lstrip("@").lower()
@@ -386,11 +390,11 @@ async def cmd_remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user = _get_or_create_user(db, update.effective_user)
         channel = db.query(Channel).filter_by(username=username).first()
         if not channel:
-            await update.message.reply_text(f"Канал @{username} не найден.")
+            await update.message.reply_text(f"❌ Канал <b>@{username}</b> не найден.", parse_mode="HTML")
             return
         uc = db.query(UserChannel).filter_by(user_id=user.id, channel_id=channel.id).first()
         if not uc:
-            await update.message.reply_text(f"Канал @{username} не в вашем списке.")
+            await update.message.reply_text(f"ℹ️ Канал <b>@{username}</b> не в вашем списке.", parse_mode="HTML")
             return
         db.delete(uc)
         db.commit()
@@ -408,14 +412,14 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """
     if not context.args:
         await update.message.reply_text(
-            "<b>🔍 Фильтр для канала</b>\n\n"
-            "Посмотреть: /filter @channel\n\n"
-            "<b>Ключевые слова</b> — пропускать посты с нужными словами:\n"
-            "/filter @channel слово1 слово2\n"
-            "/filter @channel off — убрать\n\n"
-            "<b>AI по теме</b> <i>(Basic/Pro)</i> — пропускать посты по смыслу:\n"
-            "/filter @channel ai только про экономику\n"
-            "/filter @channel ai off — убрать",
+            "🔍 <b>Фильтр постов</b>\n\n"
+            "<b>Ключевые слова</b> — пропускать только нужные:\n"
+            "  <code>/filter @channel слово1 слово2</code>\n"
+            "  <code>/filter @channel off</code> — убрать\n\n"
+            "<b>AI по теме</b> <i>(Basic / Pro)</i> — фильтр по смыслу:\n"
+            "  <code>/filter @channel ai только про экономику</code>\n"
+            "  <code>/filter @channel ai off</code> — убрать\n\n"
+            "Посмотреть: <code>/filter @channel</code>",
             parse_mode="HTML",
         )
         return
@@ -428,28 +432,32 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         channel = db.query(Channel).filter_by(username=username).first()
         if not channel:
             await update.message.reply_text(
-                f"Канал @{username} не найден. Сначала добавьте его."
+                f"❌ Канал <b>@{username}</b> не найден. Сначала добавьте его.",
+                parse_mode="HTML",
             )
             return
         uc = db.query(UserChannel).filter_by(user_id=user.id, channel_id=channel.id).first()
         if not uc:
-            await update.message.reply_text(f"Канал @{username} не в вашем списке.")
+            await update.message.reply_text(
+                f"ℹ️ Канал <b>@{username}</b> не в вашем списке.", parse_mode="HTML"
+            )
             return
 
         # Show current filters
         if not rest:
             kw_line = (
-                f"Ключевые слова: <code>{uc.keywords}</code>"
-                if uc.keywords else "Ключевые слова: не установлены"
+                f"  📝 Слова: <code>{uc.keywords}</code>"
+                if uc.keywords else "  📝 Слова: —"
             )
             ai_line = (
-                f"AI по теме: <code>{uc.ai_filter}</code>"
-                if uc.ai_filter else "AI по теме: не установлен"
+                f"  🤖 AI: <code>{uc.ai_filter}</code>"
+                if uc.ai_filter else "  🤖 AI: —"
             )
             await update.message.reply_text(
-                f"<b>🔍 Фильтры @{username}</b>\n\n{kw_line}\n{ai_line}\n\n"
-                f"/filter @{username} off — убрать ключевые слова\n"
-                f"/filter @{username} ai off — убрать AI-фильтр",
+                f"🔍 <b>Фильтры @{username}</b>\n\n{kw_line}\n{ai_line}\n\n"
+                f"{SEP}\n"
+                f"<code>/filter @{username} off</code> — убрать слова\n"
+                f"<code>/filter @{username} ai off</code> — убрать AI",
                 parse_mode="HTML",
             )
             return
@@ -458,8 +466,8 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if rest[0].lower() == "ai":
             if not user.can_summary:
                 await update.message.reply_text(
-                    "<b>🤖 AI-фильтр недоступен</b>\n\n"
-                    "Функция доступна на тарифах Basic и Pro.",
+                    "🤖 <b>AI-фильтр</b>\n\n"
+                    "Доступен на тарифах Basic ⭐ и Pro 💎.",
                     parse_mode="HTML",
                     reply_markup=subscribe_keyboard(),
                 )
@@ -468,15 +476,15 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             if not ai_args:
                 if uc.ai_filter:
                     await update.message.reply_text(
-                        f"<b>🤖 AI-фильтр @{username}</b>\n\n"
-                        f"<code>{uc.ai_filter}</code>\n\n"
-                        f"Убрать: /filter @{username} ai off",
+                        f"🤖 <b>AI-фильтр @{username}</b>\n\n"
+                        f"  <code>{uc.ai_filter}</code>\n\n"
+                        f"<code>/filter @{username} ai off</code> — удалить",
                         parse_mode="HTML",
                     )
                 else:
                     await update.message.reply_text(
-                        f"Не установлен.\n"
-                        f"Пример: /filter @{username} ai только про экономику",
+                        f"🤖 AI-фильтр для <b>@{username}</b> не задан.\n\n"
+                        f"Пример: <code>/filter @{username} ai только про экономику</code>",
                         parse_mode="HTML",
                     )
                 return
@@ -484,14 +492,14 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 uc.ai_filter = None
                 db.commit()
                 await update.message.reply_text(
-                    f"✅ <b>AI-фильтр @{username} удалён</b>", parse_mode="HTML"
+                    f"✅ AI-фильтр <b>@{username}</b> удалён.", parse_mode="HTML"
                 )
             else:
                 uc.ai_filter = " ".join(ai_args)
                 db.commit()
                 await update.message.reply_text(
-                    f"✅ <b>AI-фильтр @{username} установлен</b>\n\n"
-                    f"<code>{uc.ai_filter}</code>",
+                    f"✅ <b>AI-фильтр установлен</b>\n\n"
+                    f"  @{username} → <code>{uc.ai_filter}</code>",
                     parse_mode="HTML",
                 )
             return
@@ -501,14 +509,15 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             uc.keywords = None
             db.commit()
             await update.message.reply_text(
-                f"✅ <b>Фильтр по словам @{username} удалён</b>", parse_mode="HTML"
+                f"✅ Фильтр слов <b>@{username}</b> удалён.", parse_mode="HTML"
             )
         else:
             uc.keywords = ", ".join(rest)
             db.commit()
             await update.message.reply_text(
-                f"✅ <b>Фильтр @{username} установлен</b>\n\n"
-                f"<code>{uc.keywords}</code>\n\nПриходят только посты с этими словами.",
+                f"✅ <b>Фильтр установлен</b>\n\n"
+                f"  @{username} → <code>{uc.keywords}</code>\n\n"
+                "Приходят только посты с этими словами.",
                 parse_mode="HTML",
             )
 
@@ -522,17 +531,16 @@ async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not context.args:
             if user.quiet_start is not None:
                 await update.message.reply_text(
-                    f"<b>🔕 Тихий режим активен</b>\n\n"
-                    f"Посты не приходят с {user.quiet_start:02d}:00 "
-                    f"до {user.quiet_end:02d}:00 UTC\n\n"
-                    "Выключить: /quiet off",
+                    f"🔕 <b>Тихий режим активен</b>\n\n"
+                    f"  С {user.quiet_start:02d}:00 до {user.quiet_end:02d}:00 UTC\n\n"
+                    "<code>/quiet off</code> — выключить",
                     parse_mode="HTML",
                 )
             else:
                 await update.message.reply_text(
-                    "<b>🔔 Тихий режим выключен</b>\n\n"
-                    "Включить: /quiet ЧЧ ЧЧ\n"
-                    "Пример: /quiet 23 9 — тишина с 23:00 до 09:00 UTC",
+                    "🔔 <b>Тихий режим выключен</b>\n\n"
+                    "Включить: <code>/quiet ЧЧ ЧЧ</code>\n"
+                    "Пример: <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC",
                     parse_mode="HTML",
                 )
             return
@@ -549,7 +557,9 @@ async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if len(context.args) < 2:
             await update.message.reply_text(
-                "Укажите два часа: /quiet ЧЧ ЧЧ\nПример: /quiet 23 9"
+                "Укажите два часа: <code>/quiet ЧЧ ЧЧ</code>\n"
+                "Пример: <code>/quiet 23 9</code>",
+                parse_mode="HTML",
             )
             return
 
@@ -558,15 +568,15 @@ async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if not (0 <= qs <= 23 and 0 <= qe <= 23):
                 raise ValueError
         except ValueError:
-            await update.message.reply_text("Часы должны быть числами от 0 до 23.")
+            await update.message.reply_text("❌ Часы должны быть числами от 0 до 23.")
             return
 
         user.quiet_start, user.quiet_end = qs, qe
         db.commit()
         await update.message.reply_text(
             f"🔕 <b>Тихий режим включён</b>\n\n"
-            f"Посты не будут приходить с {qs:02d}:00 до {qe:02d}:00 UTC\n\n"
-            "Выключить: /quiet off",
+            f"  С {qs:02d}:00 до {qe:02d}:00 UTC\n\n"
+            "<code>/quiet off</code> — выключить",
             parse_mode="HTML",
         )
 
@@ -578,8 +588,8 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user = _get_or_create_user(db, update.effective_user)
         if not user.can_summary:
             await update.message.reply_text(
-                "<b>📝 Саммари недоступно</b>\n\n"
-                "Функция доступна на тарифах Basic и Pro.",
+                "📝 <b>Саммари недоступно</b>\n\n"
+                "Доступно на тарифах Basic ⭐ и Pro 💎.",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
@@ -587,8 +597,8 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if not context.args:
             await update.message.reply_text(
-                "Использование: /summary &lt;ID поста&gt;\n"
-                "ID поста указан в каждом сообщении от бота.",
+                "📝 Использование: <code>/summary &lt;ID поста&gt;</code>\n\n"
+                "ID указан под каждым постом.",
                 parse_mode="HTML",
             )
             return
@@ -601,7 +611,9 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         post = db.query(Post).filter_by(id=post_id).first()
         if not post:
-            await update.message.reply_text(f"❌ Пост #{post_id} не найден.")
+            await update.message.reply_text(
+                f"❌ Пост <b>#{post_id}</b> не найден.", parse_mode="HTML"
+            )
             return
         if not post.text:
             await update.message.reply_text("❌ В этом посте нет текста для саммари.")
@@ -624,7 +636,7 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 parse_mode="HTML",
             )
         except Exception as exc:
-            await msg.edit_text(f"❌ <b>Ошибка генерации</b>\n\n{exc}", parse_mode="HTML")
+            await msg.edit_text(f"❌ <b>Ошибка:</b> {exc}", parse_mode="HTML")
 
 
 async def cmd_autosummary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -637,16 +649,17 @@ async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user = _get_or_create_user(db, update.effective_user)
         if not user.can_auto_summary:
             await update.message.reply_text(
-                "<b>📰 AI-режим недоступен</b>\n\n"
+                "📰 <b>AI-режим недоступен</b>\n\n"
                 "Авто-саммари и дайджест доступны на тарифе Pro 💎.",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
             return
         await update.message.reply_text(
-            "<b>📰 AI-режим</b>\n\n"
-            "<b>Авто-саммари</b> — краткое изложение приходит сразу с каждым постом.\n"
-            f"<b>Дайджест</b> — сводка за день в {config.DIGEST_HOUR_UTC:02d}:00 UTC.",
+            "📰 <b>AI-режим</b>\n\n"
+            "  <b>Авто-саммари</b> — краткое изложение с каждым постом\n"
+            f"  <b>Дайджест</b> — сводка за день в {config.DIGEST_HOUR_UTC:02d}:00 UTC\n\n"
+            "Настройте кнопками ниже:",
             parse_mode="HTML",
             reply_markup=digest_keyboard(user.digest_enabled, user.auto_summary),
         )
@@ -669,13 +682,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         active_ucs = db.query(UserChannel).filter_by(is_active=True).count()
 
         await update.message.reply_text(
-            "<b>📊 Статистика</b>\n\n"
-            f"👤 Пользователей: {total_users}\n"
-            f"⭐ Активных подписок: {active_subs} (триал: {trial_subs})\n"
+            "📊 <b>Статистика</b>\n\n"
+            f"  👤 Пользователей: <b>{total_users}</b>\n"
+            f"  ⭐ Активных подписок: <b>{active_subs}</b> (триал: {trial_subs})\n\n"
             f"{SEP}\n"
-            f"📢 Каналов в базе: {total_channels}\n"
-            f"🔗 Активных подписок на каналы: {active_ucs}\n"
-            f"📝 Постов в базе: {total_posts}",
+            f"  📢 Каналов в базе: <b>{total_channels}</b>\n"
+            f"  🔗 Подписок на каналы: <b>{active_ucs}</b>\n"
+            f"  📝 Постов: <b>{total_posts}</b>",
             parse_mode="HTML",
         )
 
@@ -701,7 +714,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
             if not user.can_auto_summary:
-                await query.answer("❌ Авто-саммари доступно только на Pro 💎", show_alert=True)
+                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
                 return
             user.auto_summary = not user.auto_summary
             db.commit()
@@ -713,7 +726,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
             if not user.can_auto_summary:
-                await query.answer("❌ Дайджест доступен только на Pro 💎", show_alert=True)
+                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
                 return
             user.digest_enabled = not user.digest_enabled
             db.commit()
@@ -725,7 +738,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
             if not user.can_auto_summary:
-                await query.answer("❌ Дайджест доступен только на Pro 💎", show_alert=True)
+                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
                 return
         await query.answer("Формирую дайджест…")
         from src.userbot.monitor import send_digest_now
@@ -770,8 +783,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     )
                 else:
                     await query.message.edit_text(
-                        "<b>Каналы не добавлены</b>\n\n"
-                        "Добавьте первый: /add_channel @username",
+                        "📋 <b>Каналы удалены</b>\n\n"
+                        "Добавьте первый: <code>/add_channel @username</code>",
                         parse_mode="HTML",
                     )
 
@@ -781,7 +794,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def cmd_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Использование: /save &lt;ID поста&gt;\nID указан под каждым постом.",
+            "📌 Использование: <code>/save &lt;ID поста&gt;</code>",
             parse_mode="HTML",
         )
         return
@@ -795,15 +808,20 @@ async def cmd_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = _get_or_create_user(db, update.effective_user)
         post = db.query(Post).filter_by(id=post_id).first()
         if not post:
-            await update.message.reply_text(f"❌ Пост #{post_id} не найден.")
+            await update.message.reply_text(
+                f"❌ Пост <b>#{post_id}</b> не найден.", parse_mode="HTML"
+            )
             return
         if db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first():
-            await update.message.reply_text(f"📌 Пост #{post_id} уже в закладках.")
+            await update.message.reply_text(
+                f"ℹ️ Пост <b>#{post_id}</b> уже в закладках.", parse_mode="HTML"
+            )
             return
         db.add(Bookmark(user_id=user.id, post_id=post_id))
         db.commit()
         await update.message.reply_text(
-            f"📌 <b>Пост #{post_id} сохранён</b>\n\nПосмотреть все: /saved",
+            f"📌 <b>Пост #{post_id} сохранён</b>\n\n"
+            "Посмотреть все: <code>/saved</code>",
             parse_mode="HTML",
         )
 
@@ -811,7 +829,7 @@ async def cmd_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_unsave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Использование: /unsave &lt;ID поста&gt;", parse_mode="HTML"
+            "Использование: <code>/unsave &lt;ID поста&gt;</code>", parse_mode="HTML"
         )
         return
     try:
@@ -824,11 +842,15 @@ async def cmd_unsave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user = _get_or_create_user(db, update.effective_user)
         bm = db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first()
         if not bm:
-            await update.message.reply_text(f"Пост #{post_id} не в закладках.")
+            await update.message.reply_text(
+                f"ℹ️ Пост <b>#{post_id}</b> не в закладках.", parse_mode="HTML"
+            )
             return
         db.delete(bm)
         db.commit()
-        await update.message.reply_text(f"🗑 Пост #{post_id} удалён из закладок.")
+        await update.message.reply_text(
+            f"🗑 Пост <b>#{post_id}</b> удалён из закладок.", parse_mode="HTML"
+        )
 
 
 async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -843,24 +865,26 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         if not bookmarks:
             await update.message.reply_text(
-                "<b>📌 Закладки пусты</b>\n\nСохраняйте посты командой /save ID",
+                "📌 <b>Закладки пусты</b>\n\n"
+                "Сохраняйте посты командой <code>/save ID</code>",
                 parse_mode="HTML",
             )
             return
 
-        lines = [f"<b>📌 Закладки</b> — {len(bookmarks)} постов"]
+        n = len(bookmarks)
+        lines = [f"📌 <b>Закладки</b> — {n} {'пост' if n == 1 else 'постов'}"]
         for bm in bookmarks:
             post = bm.post
             ch_name = post.channel.username if post.channel else "?"
             date_str = bm.created_at.strftime("%d.%m  %H:%M") if bm.created_at else ""
-            preview = (post.text or "[медиа]")[:120]
+            preview = (post.text or "<i>[медиа]</i>")[:120]
             if len(post.text or "") > 120:
                 preview += "…"
             lines.append(
                 f"{SEP}\n"
                 f"📢 <b>@{ch_name}</b>  <i>{date_str}</i>\n"
                 f"{preview}\n"
-                f"/summary {post.id}  · /unsave {post.id}"
+                f"<code>/summary {post.id}</code>  ·  <code>/unsave {post.id}</code>"
             )
         await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
@@ -875,8 +899,9 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if not ucs:
             await update.message.reply_text(
-                "<b>📊 Статистика</b>\n\n"
-                "Ещё нет каналов.\nДобавьте первый: /add_channel @username",
+                "📊 <b>Статистика</b>\n\n"
+                "Каналы ещё не добавлены.\n\n"
+                "<code>/add_channel @username</code> — начать",
                 parse_mode="HTML",
             )
             return
@@ -902,19 +927,18 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
         lines = [
-            "<b>📊 Ваша статистика</b>",
+            "📊 <b>Ваша статистика</b>",
             "",
-            f"📢 Каналов: <b>{len(ucs)}</b>",
-            f"📝 Постов всего: <b>{total_posts}</b>",
-            f"📅 За последние 7 дней: <b>{week_posts}</b>",
-            f"📌 Закладок: <b>{bookmarks_count}</b>",
+            f"  📢 Каналов: <b>{len(ucs)}</b>",
+            f"  📝 Постов всего: <b>{total_posts}</b>",
+            f"  📅 За 7 дней: <b>{week_posts}</b>",
+            f"  📌 Закладок: <b>{bookmarks_count}</b>",
         ]
         if top:
-            lines.append(SEP)
-            lines.append("<b>Топ каналов за неделю:</b>")
+            lines += ["", SEP, "<b>Топ каналов за неделю:</b>"]
             medals = ["🥇", "🥈", "🥉"]
             for i, (username, cnt) in enumerate(top):
-                lines.append(f"{medals[i]} @{username} — {cnt} постов")
+                lines.append(f"  {medals[i]} @{username} — {cnt} постов")
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
@@ -936,7 +960,10 @@ async def btn_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def btn_add_channel_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["awaiting_channel"] = True
-    await update.message.reply_text("Введите username канала (с @ или без):")
+    await update.message.reply_text(
+        "📢 Введите username канала:\n<i>Например: @durov или durov</i>",
+        parse_mode="HTML",
+    )
 
 
 async def btn_summary_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -944,13 +971,16 @@ async def btn_summary_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user = _get_or_create_user(db, update.effective_user)
         if not user.can_summary:
             await update.message.reply_text(
-                "<b>📝 Саммари недоступно</b>\n\nФункция доступна на тарифах Basic и Pro.",
+                "📝 <b>Саммари недоступно</b>\n\nДоступно на тарифах Basic ⭐ и Pro 💎.",
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(),
             )
             return
     context.user_data["awaiting_summary_id"] = True
-    await update.message.reply_text("Введите ID поста для саммари:")
+    await update.message.reply_text(
+        "📝 Введите ID поста:\n<i>ID указан под каждым сообщением от бота.</i>",
+        parse_mode="HTML",
+    )
 
 
 async def btn_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

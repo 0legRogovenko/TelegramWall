@@ -40,8 +40,33 @@ def _get_media_type(message) -> str | None:
     return None
 
 
+def _allowed_channel_ids(db, user_id: int, limit: int) -> set[int]:
+    """Return the set of channel_ids that fit within the user's current tier limit.
+
+    Uses creation order: the first `limit` channels the user added are
+    always delivered; channels added later (when on a higher tier) are
+    silently skipped once the subscription downgrades.
+    """
+    rows = (
+        db.query(UserChannel.channel_id)
+        .filter_by(user_id=user_id, is_active=True)
+        .order_by(UserChannel.created_at)
+        .limit(limit)
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
 def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int, str | None]]:
-    """Return (telegram_id, ai_filter) for subscribers who pass quiet/keyword checks."""
+    """Return (telegram_id, ai_filter) for subscribers who pass all delivery checks.
+
+    Checks applied (in order):
+    1. Quiet hours
+    2. Keyword filter
+    3. Channel-limit enforcement — if the user's tier allows fewer channels
+       than they currently have, only the earliest-added ones are delivered.
+       The UserChannel record is NOT modified (soft enforcement).
+    """
     now_hour = datetime.now(timezone.utc).hour
     ucs = db.query(UserChannel).filter_by(channel_id=channel_id, is_active=True).all()
     result = []
@@ -61,6 +86,17 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
         if kws and not any(kw in (text or "").lower() for kw in kws):
             logger.debug("Skipping user %s (keyword filter)", user.telegram_id)
             continue
+
+        # Channel limit enforcement (soft): skip if channel is outside allowed set
+        limit = user.channel_limit
+        if limit is not None:
+            allowed = _allowed_channel_ids(db, user.id, limit)
+            if channel_id not in allowed:
+                logger.debug(
+                    "Skipping user %s (channel %s exceeds tier limit %d)",
+                    user.telegram_id, channel_id, limit,
+                )
+                continue
 
         result.append((user.telegram_id, uc.ai_filter))
 

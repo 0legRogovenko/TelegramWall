@@ -1,4 +1,11 @@
-"""Telegram Stars payment flow."""
+"""Telegram payment flow — YooKassa (RUB) or Telegram Stars (XTR) fallback.
+
+Active mode is determined by config.YOOKASSA_PROVIDER_TOKEN:
+  • Set  → invoices in RUB via YooKassa (real bank-card / SBP payments)
+  • Empty → invoices in XTR (Telegram Stars, no external provider needed)
+
+Pre-checkout and successful_payment handling is identical for both modes.
+"""
 from datetime import datetime, timedelta, timezone
 
 from telegram import Update
@@ -8,32 +15,44 @@ from src.config import config
 from src.database import db_session
 from src.models import Subscription, User
 
-_TIER_META = {
+_TIER_META: dict[str, dict] = {
     "basic": {
-        "label": "Basic ⭐",
-        "price": lambda: config.SUBSCRIPTION_PRICE_BASIC_STARS,
-        "days": 30,
+        "label":       "Basic ⭐",
+        "days":        30,
         "description": "10 каналов + саммари по запросу — 30 дней.",
+        "stars":       lambda: config.SUBSCRIPTION_PRICE_BASIC_STARS,
+        "rub":         lambda: config.SUBSCRIPTION_PRICE_BASIC_RUB,
     },
     "pro": {
-        "label": "Pro 💎",
-        "price": lambda: config.SUBSCRIPTION_PRICE_PRO_STARS,
-        "days": 30,
+        "label":       "Pro 💎",
+        "days":        30,
         "description": "∞ каналов + авто-саммари — 30 дней.",
+        "stars":       lambda: config.SUBSCRIPTION_PRICE_PRO_STARS,
+        "rub":         lambda: config.SUBSCRIPTION_PRICE_PRO_RUB,
     },
     "annual_basic": {
-        "label": "Basic Годовой ⭐",
-        "price": lambda: config.SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS,
-        "days": 365,
+        "label":       "Basic Годовой ⭐",
+        "days":        365,
         "description": "10 каналов + саммари по запросу — 365 дней (скидка 20%).",
+        "stars":       lambda: config.SUBSCRIPTION_PRICE_ANNUAL_BASIC_STARS,
+        "rub":         lambda: config.SUBSCRIPTION_PRICE_ANNUAL_BASIC_RUB,
     },
     "annual_pro": {
-        "label": "Pro Годовой 💎",
-        "price": lambda: config.SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS,
-        "days": 365,
+        "label":       "Pro Годовой 💎",
+        "days":        365,
         "description": "∞ каналов + авто-саммари — 365 дней (скидка 20%).",
+        "stars":       lambda: config.SUBSCRIPTION_PRICE_ANNUAL_PRO_STARS,
+        "rub":         lambda: config.SUBSCRIPTION_PRICE_ANNUAL_PRO_RUB,
     },
 }
+
+
+def price_label(tier: str) -> str:
+    """Human-readable price for a tier in the active payment currency."""
+    meta = _TIER_META.get(tier, _TIER_META["basic"])
+    if config.YOOKASSA_PROVIDER_TOKEN:
+        return f"{meta['rub']() // 100} ₽"
+    return f"{meta['stars']()} ⭐"
 
 
 async def send_invoice(
@@ -42,14 +61,30 @@ async def send_invoice(
     tier: str = "basic",
 ) -> None:
     meta = _TIER_META.get(tier, _TIER_META["basic"])
+
+    if config.YOOKASSA_PROVIDER_TOKEN:
+        provider_token = config.YOOKASSA_PROVIDER_TOKEN
+        currency = "RUB"
+        amount = meta["rub"]()
+        extra = {
+            "need_email": True,           # Telegram collects email before payment
+            "send_email_to_provider": True,  # passes it to YooKassa for 54-ФЗ receipts
+        }
+    else:
+        provider_token = ""
+        currency = "XTR"
+        amount = meta["stars"]()
+        extra = {}
+
     await context.bot.send_invoice(
         chat_id=update.effective_chat.id,
         title=f"Подписка TelegramWall {meta['label']}",
         description=meta["description"],
         payload=f"subscribe:{tier}",  # noqa: E231
-        provider_token="",
-        currency="XTR",
-        prices=[{"label": meta["label"], "amount": meta["price"]()}],  # noqa: E231
+        provider_token=provider_token,
+        currency=currency,
+        prices=[{"label": meta["label"], "amount": amount}],
+        **extra,
     )
 
 
@@ -74,7 +109,7 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
         db.add(Subscription(
             user_id=user.id,
             tier=tier,
-            stars_paid=payment.total_amount,
+            stars_paid=payment.total_amount,           # kopecks for RUB, Stars for XTR
             payment_charge_id=payment.telegram_payment_charge_id,
             expires_at=expires_at,
         ))
