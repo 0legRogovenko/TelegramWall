@@ -1,4 +1,6 @@
+import hashlib
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,6 +10,11 @@ class Config:
     # Bot
     TELEGRAM_BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
     TELEGRAM_WEBHOOK_URL: str = os.getenv("TELEGRAM_WEBHOOK_URL", "")
+    # Validates X-Telegram-Bot-Api-Secret-Token on /webhook; derived from the
+    # bot token by default so no extra env var is required.
+    WEBHOOK_SECRET: str = os.getenv("TELEGRAM_WEBHOOK_SECRET") or hashlib.sha256(
+        TELEGRAM_BOT_TOKEN.encode()
+    ).hexdigest()[:48]
     ADMIN_IDS: list[int] = [
         int(x) for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()
     ]

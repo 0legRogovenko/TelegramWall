@@ -1,8 +1,6 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
 from unittest.mock import patch
 
-import pytest
-
 from src.userbot.monitor import _get_eligible_subscribers
 from tests.conftest import (
     create_channel,

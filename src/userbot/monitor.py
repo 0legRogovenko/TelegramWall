@@ -1,5 +1,6 @@
 """Telethon userbot — monitors channels via polling + live events."""
 import asyncio
+import html
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,7 @@ from src.config import config
 from src.database import get_session
 from src.models import Channel, PendingPost, Post, User, UserChannel
 from src.services.summarizer import summarize
+from src.utils import plural_posts
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +30,6 @@ BATCH_WINDOW_SECS = 90
 
 # (tg_id, channel_id) → {"posts": [...], "label": str, "username": str, "first_at": float}
 _batch_buffer: dict[tuple[int, int], dict] = {}
-
-
-def _plural_posts(n: int) -> str:
-    if n % 10 == 1 and n % 100 != 11:
-        return "пост"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return "поста"
-    return "постов"
 
 
 def _get_media_type(message) -> str | None:
@@ -233,12 +227,12 @@ async def _deliver_to_user(
         if text:
             try:
                 time_str = msg.date.strftime("%d.%m  %H:%M") if msg.date else ""
-                header = f"📢 <b>{channel_label}</b>"
+                header = f"📢 <b>{html.escape(channel_label)}</b>"
                 if time_str:
                     header += f" <i>· {time_str} UTC</i>"
                 await ptb_app.bot.send_message(
                     chat_id=tg_id,
-                    text=f"{header}\n\n{text}\n\n<i>#{post_id}</i>",
+                    text=f"{header}\n\n{html.escape(text)}\n\n<i>#{post_id}</i>",
                     parse_mode="HTML",
                 )
                 logger.info("✅ Sent text post #%s to user %s", post_id, tg_id)
@@ -273,7 +267,8 @@ async def _send_summary(
         return
     if not post.summary:
         try:
-            post.summary = summarize(text)
+            # to_thread: the Anthropic call is blocking — keep the event loop alive
+            post.summary = await asyncio.to_thread(summarize, text)
             db.commit()
         except Exception as exc:
             logger.error("Summarization failed for post %s: %s", post_id, exc)
@@ -283,7 +278,8 @@ async def _send_summary(
         await ptb_app.bot.send_message(
             chat_id=tg_id,
             text=(
-                f"📝 <b>Саммари</b> из <b>{channel_label}</b>:\n\n{post.summary}\n\n"
+                f"📝 <b>Саммари</b> из <b>{html.escape(channel_label)}</b>:\n\n"
+                f"{html.escape(post.summary)}\n\n"
                 f"Запросить снова: /summary_{post_id}"
             ),
             parse_mode="HTML",
@@ -298,9 +294,10 @@ def _format_batch_message(label: str, username: str, posts: list[dict]) -> str:
     posts: [{"post_id": int, "text": str}]
     """
     n = len(posts)
-    lines = [f"📢 <b>{label}</b> — {n} {'новый' if n == 1 else 'новых'} {_plural_posts(n)}"]
+    safe_label = html.escape(label)
+    lines = [f"📢 <b>{safe_label}</b> — {n} {'новый' if n == 1 else 'новых'} {plural_posts(n)}"]
     for i, p in enumerate(posts, 1):
-        preview = (p["text"] or "[медиа]")[:120]
+        preview = html.escape((p["text"] or "[медиа]")[:120])
         if len(p["text"] or "") > 120:
             preview += "…"
         lines.append(f"{SEP}\n{i}. {preview}\n/summary_{p['post_id']}")
@@ -330,6 +327,20 @@ def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
         db.rollback()
     finally:
         db.close()
+
+
+def flush_buffer_on_shutdown() -> None:
+    """Persist everything still buffered in memory before the process dies.
+
+    Called from the SIGTERM handler — GitHub Actions restarts the bot every
+    few hours, and without this the in-memory buffer would be lost.
+    """
+    entries = list(_batch_buffer.items())
+    _batch_buffer.clear()
+    for (tg_id, channel_id), entry in entries:
+        _queue_pending(tg_id, channel_id, entry["posts"])
+    if entries:
+        logger.info("Shutdown flush: %d buffered batch(es) persisted", len(entries))
 
 
 async def _batch_flush_loop(client: TelegramClient) -> None:
@@ -461,11 +472,11 @@ async def _build_and_send_digest(telegram_id: int, db) -> bool:
 
     ch_map = {uc.channel_id: uc.channel.username for uc in ucs}
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    lines = [f"📰 <b>Дайджест {date_str}</b> — {len(posts)} {_plural_posts(len(posts))}"]
+    lines = [f"📰 <b>Дайджест {date_str}</b> — {len(posts)} {plural_posts(len(posts))}"]
     for i, post in enumerate(posts, 1):
         ch_name = ch_map.get(post.channel_id, "?")
         time_str = post.created_at.strftime("%H:%M") if post.created_at else ""
-        preview = (post.text or "[медиа]")[:200]
+        preview = html.escape((post.text or "[медиа]")[:200])
         if len(post.text or "") > 200:
             preview += "…"
         lines.append(

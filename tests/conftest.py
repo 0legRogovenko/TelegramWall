@@ -46,9 +46,20 @@ def patch_db_session(db, monkeypatch):
     def _test_db_session():
         yield db
 
-    monkeypatch.setattr("src.database.db_session", _test_db_session)
-    monkeypatch.setattr("src.bot.handlers.db_session", _test_db_session)
-    monkeypatch.setattr("src.bot.payments.db_session", _test_db_session)
+    targets = [
+        "src.database.db_session",
+        "src.bot.payments.db_session",
+        # handlers is a package — each submodule imports db_session directly
+        "src.bot.handlers.general.db_session",
+        "src.bot.handlers.channels.db_session",
+        "src.bot.handlers.ai.db_session",
+        "src.bot.handlers.admin.db_session",
+        "src.bot.handlers.bookmarks.db_session",
+        "src.bot.handlers.callbacks.db_session",
+        "src.bot.handlers.buttons.db_session",
+    ]
+    for target in targets:
+        monkeypatch.setattr(target, _test_db_session)
 
 
 # ── Telegram mock helpers ─────────────────────────────────────────────────────

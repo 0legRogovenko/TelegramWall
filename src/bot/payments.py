@@ -9,14 +9,14 @@ Pre-checkout and successful_payment handling is identical for both modes.
 import logging
 from datetime import datetime, timedelta, timezone
 
-logger = logging.getLogger(__name__)
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.config import config
 from src.database import db_session
 from src.models import Subscription, User
+
+logger = logging.getLogger(__name__)
 
 _TIER_META: dict[str, dict] = {
     "basic": {

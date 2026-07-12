@@ -1,6 +1,4 @@
 """Tests for bot command handlers (async, using mocked Telegram)."""
-import pytest
-
 from src.bot.handlers import (
     cmd_add_channel,
     cmd_filter,

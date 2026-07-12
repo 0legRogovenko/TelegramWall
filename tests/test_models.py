@@ -6,8 +6,6 @@ between tests that share a single in-memory SQLite database.
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pytest
-
 from src.models import Subscription
 from tests.conftest import (
     create_channel,

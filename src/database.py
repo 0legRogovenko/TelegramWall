@@ -1,26 +1,32 @@
+import logging
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, scoped_session
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from src.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(config.DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+# One session per call — the whole app shares a single asyncio thread, so a
+# thread-scoped session would be reused by concurrent tasks and corrupt state.
 SessionFactory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-Session = scoped_session(SessionFactory)
 
 
 def _run_migration(conn, sql: str) -> None:
     try:
         conn.execute(text(sql))
         conn.commit()
-    except Exception:
+    except Exception as exc:
         conn.rollback()  # reset transaction so next ALTER TABLE can run
+        # Usually "column already exists" — but log it so real failures are visible
+        logger.debug("Migration skipped: %s (%s)", sql.strip().split("\n")[0], exc)
 
 
 def init_db() -> None:
@@ -35,7 +41,8 @@ def init_db() -> None:
         )
         _run_migration(
             conn,
-            "ALTER TABLE subscriptions ADD COLUMN payment_currency VARCHAR(3) NOT NULL DEFAULT 'XTR'",
+            "ALTER TABLE subscriptions ADD COLUMN payment_currency VARCHAR(3) "
+            "NOT NULL DEFAULT 'XTR'",
         )
         # users — new columns
         _run_migration(conn, "ALTER TABLE users ADD COLUMN digest_enabled BOOLEAN DEFAULT FALSE")
@@ -68,17 +75,33 @@ def init_db() -> None:
                 UNIQUE(user_id, post_id)
             )
         """)
+        # indexes for hot query paths
+        _run_migration(
+            conn, "CREATE INDEX IF NOT EXISTS ix_posts_created_at ON posts (created_at)"
+        )
+        _run_migration(
+            conn,
+            "CREATE INDEX IF NOT EXISTS ix_user_channels_channel_id "
+            "ON user_channels (channel_id)",
+        )
+        _run_migration(
+            conn,
+            "CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)",
+        )
 
 
 def get_session():
-    return Session()
+    return SessionFactory()
 
 
 @contextmanager
 def db_session():
-    """Context manager for a DB session — closes automatically on exit."""
-    db = Session()
+    """Context manager for a DB session — rolls back on error, always closes."""
+    db = SessionFactory()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

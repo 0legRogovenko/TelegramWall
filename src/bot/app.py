@@ -6,6 +6,7 @@ import logging
 from flask import Flask, Response, request
 from telegram import Update
 from telegram.ext import (
+    AIORateLimiter,
     Application,
     CallbackQueryHandler,
     CommandHandler,
@@ -69,7 +70,11 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     _loop = loop
 
     use_webhook = config.TELEGRAM_WEBHOOK_URL.startswith("https://")
-    builder = Application.builder().token(config.TELEGRAM_BOT_TOKEN)
+    builder = (
+        Application.builder()
+        .token(config.TELEGRAM_BOT_TOKEN)
+        .rate_limiter(AIORateLimiter())  # respects Telegram flood limits
+    )
     if use_webhook:
         builder = builder.updater(None)  # Flask handles incoming updates
     app = builder.build()
@@ -115,6 +120,12 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
 
 @flask_app.route("/webhook", methods=["POST"])
 def webhook():
+    # Telegram echoes back the secret_token passed to set_webhook —
+    # reject anything that doesn't carry it (bots can't be impersonated).
+    header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if header_token != config.WEBHOOK_SECRET:
+        return Response("Forbidden", status=403)
+
     if ptb_app is None or _loop is None:
         return Response("Bot not initialised", status=503)
 
