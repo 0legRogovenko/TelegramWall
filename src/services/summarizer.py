@@ -2,12 +2,21 @@ import anthropic
 
 from src.config import config
 
+# Precision-tuned for minimal token spend: output tokens cost 5x input,
+# so the prompt hard-caps response length and format.
 SYSTEM_PROMPT = (
-    "Ты помощник для краткого изложения текстов. "
-    "Создавай лаконичное саммари на русском языке — 3-5 предложений. "
-    "Выдели ключевую мысль и самое важное. "
-    "Не добавляй вводных фраз типа 'В этом тексте...' или 'Саммари:'."
+    "Сожми пост из Telegram-канала в саммари на русском языке.\n"
+    "Формат: 1-3 коротких предложения, не больше 60 слов. "
+    "Простой пост — одно предложение.\n"
+    "Передай только факты из текста: главную мысль, ключевые цифры и даты, вывод.\n"
+    "Запрещено: вступления, своя оценка, эмодзи, markdown, пересказ второстепенных деталей."
 )
+
+FILTER_SYSTEM = "Answer only 'yes' or 'no'."
+
+# Telegram caps post text at 4096 chars — anything above is dead headroom
+MAX_INPUT_CHARS = 4500
+MAX_FILTER_CHARS = 500
 
 _client: anthropic.Anthropic | None = None
 
@@ -27,11 +36,15 @@ def is_relevant(text: str, filter_prompt: str) -> bool:
         client = _get_client()
         msg = client.messages.create(
             model=config.CLAUDE_FILTER_MODEL,
-            max_tokens=5,
-            system="Answer only 'yes' or 'no'. No other text.",
+            max_tokens=3,
+            system=FILTER_SYSTEM,
             messages=[{
                 "role": "user",
-                "content": f"Is this text relevant to: '{filter_prompt}'?\n\n{text[:500]}",
+                "content": (
+                    f"Topic: {filter_prompt}\n\n"
+                    f"Text:\n{text[:MAX_FILTER_CHARS]}\n\n"
+                    "Is the text relevant to the topic?"
+                ),
             }],
         )
         return "yes" in msg.content[0].text.strip().lower()
@@ -46,8 +59,8 @@ def summarize(text: str) -> str:
     client = _get_client()
     message = client.messages.create(
         model=config.CLAUDE_MODEL,
-        max_tokens=512,
+        max_tokens=250,  # hard cost cap; 60 words of Russian is ~120 tokens
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": text[:8000]}],
+        messages=[{"role": "user", "content": text[:MAX_INPUT_CHARS]}],
     )
     return message.content[0].text.strip()

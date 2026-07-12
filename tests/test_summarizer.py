@@ -36,7 +36,7 @@ class TestSummarize:
 
         assert result == "Краткое изложение."
 
-    def test_truncates_long_text_to_8000_chars(self):
+    def test_truncates_long_text_to_max_input_chars(self):
         long_text = "x" * 9000
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -48,7 +48,7 @@ class TestSummarize:
 
         call_kwargs = mock_client.messages.create.call_args
         user_content = call_kwargs[1]["messages"][0]["content"]
-        assert len(user_content) == 8000
+        assert len(user_content) == summarizer.MAX_INPUT_CHARS
 
 
 class TestIsRelevant:
