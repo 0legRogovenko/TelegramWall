@@ -204,8 +204,27 @@ async def _deliver_to_user(
     channel_label: str,
     post_id: int,
     text: str,
+    username: str | None = None,
 ) -> None:
     from src.bot.app import ptb_app
+
+    # Auto-summary mode: send only the summary + a link to the original post,
+    # never the full post. Falls through to normal delivery if AI fails.
+    db = get_session()
+    try:
+        user = db.query(User).filter_by(telegram_id=tg_id).first()
+        if (
+            user and user.auto_summary and user.can_auto_summary
+            and text and len(text.strip()) >= 50
+        ):
+            sent = await _send_summary(
+                client, tg_id, post_id, text, channel_label, db, lang_of(user),
+                username=username, msg_id=msg.id,
+            )
+            if sent:
+                return
+    finally:
+        db.close()
 
     forwarded = False
 
@@ -246,19 +265,6 @@ async def _deliver_to_user(
             )
             return
 
-    db = get_session()
-    try:
-        user = db.query(User).filter_by(telegram_id=tg_id).first()
-        if (
-            user and user.auto_summary and user.can_auto_summary
-            and text and len(text.strip()) >= 50
-        ):
-            await _send_summary(
-                client, tg_id, post_id, text, channel_label, db, lang_of(user)
-            )
-    finally:
-        db.close()
-
 
 async def _send_summary(
     client: TelegramClient,
@@ -268,10 +274,13 @@ async def _send_summary(
     channel_label: str,
     db,
     lang: str = "ru",
-) -> None:
+    username: str | None = None,
+    msg_id: int | None = None,
+) -> bool:
+    """Send the AI summary with a link to the original post. Returns True on success."""
     post = db.query(Post).filter_by(id=post_id).first()
     if not post:
-        return
+        return False
     if not post.summary:
         try:
             # to_thread: the Anthropic call is blocking — keep the event loop alive
@@ -279,17 +288,29 @@ async def _send_summary(
             db.commit()
         except Exception as exc:
             logger.error("Summarization failed for post %s: %s", post_id, exc)
-            return
+            return False
+
+    if username and msg_id:
+        url = f"https://t.me/{username}/{msg_id}"
+    elif username:
+        url = f"https://t.me/{username}"
+    else:
+        url = f"https://t.me/{channel_label.lstrip('@')}"
+
     from src.bot.app import ptb_app
     try:
         await ptb_app.bot.send_message(
             chat_id=tg_id,
             text=t("auto_summary_msg", lang, label=html.escape(channel_label),
-                   text=html.escape(post.summary), id=post_id),
+                   text=html.escape(post.summary), url=url, id=post_id),
             parse_mode="HTML",
+            disable_web_page_preview=True,
         )
+        logger.info("✅ Auto-summary for post #%s → user %s", post_id, tg_id)
+        return True
     except Exception as exc:
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
+        return False
 
 
 def _format_batch_message(
@@ -366,7 +387,8 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
                 if len(posts) == 1:
                     p = posts[0]
                     await _deliver_to_user(
-                        client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"]
+                        client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"],
+                        username=entry.get("username"),
                     )
                 else:
                     _queue_pending(tg_id, channel_id, posts)

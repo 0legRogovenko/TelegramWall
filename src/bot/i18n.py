@@ -580,9 +580,9 @@ T = {
     "batch_header": {"ru": "📢 <b>{label}</b> — {phrase}", "en": "📢 <b>{label}</b> — {phrase}", "es": "📢 <b>{label}</b> — {phrase}"},
     "open_channel": {"ru": "🔗 <a href=\"https://t.me/{u}\">Открыть @{u}</a>", "en": "🔗 <a href=\"https://t.me/{u}\">Open @{u}</a>", "es": "🔗 <a href=\"https://t.me/{u}\">Abrir @{u}</a>"},
     "auto_summary_msg": {
-        "ru": "📝 <b>Саммари</b> из <b>{label}</b>:\n\n{text}\n\nЗапросить снова: /summary_{id}",
-        "en": "📝 <b>Summary</b> from <b>{label}</b>:\n\n{text}\n\nRequest again: /summary_{id}",
-        "es": "📝 <b>Resumen</b> de <b>{label}</b>:\n\n{text}\n\nPedir de nuevo: /summary_{id}",
+        "ru": "📝 <b>{label}</b>\n\n{text}\n\n🔗 <a href=\"{url}\">Читать оригинал</a>  ·  #{id}",
+        "en": "📝 <b>{label}</b>\n\n{text}\n\n🔗 <a href=\"{url}\">Read the original</a>  ·  #{id}",
+        "es": "📝 <b>{label}</b>\n\n{text}\n\n🔗 <a href=\"{url}\">Leer el original</a>  ·  #{id}",
     },
 
     # Command menu descriptions
