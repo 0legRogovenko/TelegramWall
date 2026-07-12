@@ -7,7 +7,7 @@ load_dotenv()
 class Config:
     # Bot
     TELEGRAM_BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
-    TELEGRAM_WEBHOOK_URL: str = os.environ["TELEGRAM_WEBHOOK_URL"]
+    TELEGRAM_WEBHOOK_URL: str = os.getenv("TELEGRAM_WEBHOOK_URL", "")
     ADMIN_IDS: list[int] = [
         int(x) for x in os.getenv("TELEGRAM_ADMIN_IDS", "").split(",") if x.strip()
     ]

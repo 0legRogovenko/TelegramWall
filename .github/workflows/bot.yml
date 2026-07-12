@@ -1,0 +1,48 @@
+name: Bot
+
+# Runs the bot in polling mode.
+# The job has a 5-hour timeout; the cron restarts it every 5 hours automatically.
+# concurrency: cancel-in-progress ensures only one instance runs at a time —
+# a new push or cron fires, kills the previous instance, then starts fresh.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 */5 * * *"   # restart every 5 hours
+  workflow_dispatch:         # manual trigger from GitHub UI
+
+concurrency:
+  group: bot-instance
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300     # 5 hours — just under GitHub's 6-hour limit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start bot (polling mode)
+        # TELEGRAM_WEBHOOK_URL is intentionally absent → polling mode
+        env:
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_API_ID:          ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH:        ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_PHONE:           ${{ secrets.TELEGRAM_PHONE }}
+          TELEGRAM_SESSION_STRING:  ${{ secrets.TELEGRAM_SESSION_STRING }}
+          TELEGRAM_ADMIN_IDS:       ${{ secrets.TELEGRAM_ADMIN_IDS }}
+          DATABASE_URL:             ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+          YOOKASSA_PROVIDER_TOKEN:  ${{ secrets.YOOKASSA_PROVIDER_TOKEN }}
+          FLASK_PORT:               "5001"
+        run: python main.py
