@@ -26,7 +26,7 @@ def is_relevant(text: str, filter_prompt: str) -> bool:
     try:
         client = _get_client()
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=config.CLAUDE_FILTER_MODEL,
             max_tokens=5,
             system="Answer only 'yes' or 'no'. No other text.",
             messages=[{
