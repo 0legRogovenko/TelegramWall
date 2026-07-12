@@ -12,3 +12,6 @@ dist/
 .mypy_cache/
 .DS_Store
 **/.DS_Store
+dev.db
+
+assets/bot_avatar.png

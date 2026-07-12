@@ -33,7 +33,7 @@ class Config:
     # Anthropic (optional — /summary and AI filter won't work without it)
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     # Summaries: Sonnet 5 — intro pricing $2/$10 per MTok through 2026-08-31
-    CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-5")
+    CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
     # AI relevance filter: cheap yes/no classification
     CLAUDE_FILTER_MODEL: str = os.getenv("CLAUDE_FILTER_MODEL", "claude-haiku-4-5")
 
