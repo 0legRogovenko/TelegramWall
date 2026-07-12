@@ -3,36 +3,35 @@ import secrets
 
 from telegram import BotCommand, BotCommandScopeChat
 
+from src.bot.i18n import lang_of, t
 from src.bot.keyboards import SEP
 from src.bot.payments import price_label
 from src.config import config
 from src.models import Channel, User
 
-_FREE_COMMANDS = [
-    BotCommand("start",       "Начало работы"),
-    BotCommand("channels",    "Мои каналы"),
-    BotCommand("add_channel", "Добавить канал"),
-    BotCommand("subscribe",   "Тарифы и подписка"),
-    BotCommand("help",        "Все команды"),
-]
 
-_BASIC_EXTRA = [
-    BotCommand("summary", "Саммари поста по ID"),
-    BotCommand("filter",  "Фильтр для канала"),
-]
-
-_PRO_EXTRA = [
-    BotCommand("digest", "AI-режим: дайджест и авто-саммари"),
-]
+def _free_commands(lang: str) -> list[BotCommand]:
+    return [
+        BotCommand("start",       t("cmd_start", lang)),
+        BotCommand("channels",    t("cmd_channels", lang)),
+        BotCommand("add_channel", t("cmd_add", lang)),
+        BotCommand("subscribe",   t("cmd_subscribe", lang)),
+        BotCommand("language",    t("cmd_language", lang)),
+        BotCommand("help",        t("cmd_help", lang)),
+    ]
 
 
 async def _sync_menu_commands(bot, chat_id: int, user) -> None:
-    """Per-chat command menu: free users see only base commands."""
-    cmds = list(_FREE_COMMANDS)
+    """Per-chat command menu in the user's language; free users see base commands."""
+    lang = lang_of(user)
+    cmds = _free_commands(lang)
     if user.can_summary:
-        cmds = cmds[:3] + _BASIC_EXTRA + cmds[3:]
+        cmds[3:3] = [
+            BotCommand("summary", t("cmd_summary", lang)),
+            BotCommand("filter",  t("cmd_filter", lang)),
+        ]
     if user.can_auto_summary:
-        cmds = cmds[:5] + _PRO_EXTRA + cmds[5:]
+        cmds[5:5] = [BotCommand("digest", t("cmd_digest", lang))]
     try:
         await bot.set_my_commands(cmds, scope=BotCommandScopeChat(chat_id))
     except Exception:
@@ -42,7 +41,7 @@ async def _sync_menu_commands(bot, chat_id: int, user) -> None:
 async def _guard_pro(query, user) -> bool:
     """Return True if user has Pro; send an alert and return False otherwise."""
     if not user.can_auto_summary:
-        await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
+        await query.answer(t("pro_only_alert", lang_of(user)), show_alert=True)
         return False
     return True
 
@@ -78,36 +77,13 @@ def _ensure_referral_code(db, user: User) -> str:
     return user.referral_code
 
 
-def _help_text() -> str:
-    return (
-        "📖 <b>TelegramWall — быстрый старт</b>\n\n"
-
-        "<b>Каналы</b>\n"
-        "  <code>/add_channel @username</code> — добавить\n"
-        "  <code>/channels</code> — список и управление\n\n"
-
-        "<b>Фильтры</b>\n"
-        "  <code>/filter @channel слово</code> — по ключевым словам\n"
-        "  <code>/filter @channel ai тема</code> — по смыслу <i>(Basic+)</i>\n\n"
-
-        "<b>AI-саммари</b>\n"
-        "  <code>/summary_ID</code> — краткий пересказ поста\n"
-        "  <code>/digest</code> — авто-саммари и дайджест <i>(Pro)</i>\n\n"
-
-        "<b>Закладки</b>\n"
-        "  <code>/save ID</code> — сохранить  ·  <code>/saved</code> — список\n\n"
-
-        "<b>Комфорт</b>\n"
-        "  <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC\n"
-        "  <code>/stats</code> — ваша статистика\n\n"
-
-        f"{SEP}\n"
-        "<b>Тарифы</b>\n"
-        f"  Free — до {config.CHANNEL_LIMIT_FREE} каналов\n"
-        f"  ⭐ Basic — до {config.CHANNEL_LIMIT_BASIC} каналов + саммари\n"
-        f"    {price_label('basic')} / мес\n"
-        "  💎 Pro — ∞ каналов + авто-саммари + дайджест\n"
-        f"    {price_label('pro')} / мес\n\n"
-        "<code>/trial</code> — 3 дня Pro бесплатно\n"
-        f"<code>/refer</code> — пригласить → +{config.REFERRAL_BONUS_DAYS} дней"
+def _help_text(lang: str = "ru") -> str:
+    return t(
+        "help", lang,
+        sep=SEP,
+        free_limit=config.CHANNEL_LIMIT_FREE,
+        basic_limit=config.CHANNEL_LIMIT_BASIC,
+        basic_price=price_label("basic"),
+        pro_price=price_label("pro"),
+        ref_days=config.REFERRAL_BONUS_DAYS,
     )

@@ -25,6 +25,7 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
+    language: Mapped[str | None] = mapped_column(String(5))  # None until chosen at /start
     auto_summary: Mapped[bool] = mapped_column(Boolean, default=False)
     digest_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)

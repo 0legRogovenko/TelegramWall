@@ -51,6 +51,7 @@ def init_db() -> None:
         _run_migration(conn, "ALTER TABLE users ADD COLUMN quiet_end INTEGER")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referral_code VARCHAR(32)")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        _run_migration(conn, "ALTER TABLE users ADD COLUMN language VARCHAR(5)")
         # user_channels
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN keywords TEXT")
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN ai_filter TEXT")

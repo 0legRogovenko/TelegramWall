@@ -28,7 +28,7 @@ class TestSummarize:
     def test_calls_api_and_returns_stripped_text(self):
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="  Краткое изложение. ")]
+        mock_response.content = [MagicMock(text="  Краткое изложение. ", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):
@@ -40,7 +40,7 @@ class TestSummarize:
         long_text = "x" * 9000
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="summary")]
+        mock_response.content = [MagicMock(text="summary", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):
@@ -55,7 +55,7 @@ class TestIsRelevant:
     def test_returns_true_when_api_says_yes(self):
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="yes")]
+        mock_response.content = [MagicMock(text="yes", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):
@@ -65,7 +65,7 @@ class TestIsRelevant:
     def test_returns_false_when_api_says_no(self):
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="no")]
+        mock_response.content = [MagicMock(text="no", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):
@@ -76,7 +76,7 @@ class TestIsRelevant:
         """'yes' anywhere in the response counts as relevant."""
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Yes.")]
+        mock_response.content = [MagicMock(text="Yes.", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):
@@ -101,7 +101,7 @@ class TestIsRelevant:
         long_text = "A" * 600
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="yes")]
+        mock_response.content = [MagicMock(text="yes", type="text")]
         mock_client.messages.create.return_value = mock_response
 
         with patch("src.services.summarizer._get_client", return_value=mock_client):

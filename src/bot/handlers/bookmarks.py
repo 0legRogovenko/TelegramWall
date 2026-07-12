@@ -6,77 +6,75 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import _get_or_create_user
+from src.bot.i18n import lang_of, plural_posts, t
 from src.bot.keyboards import SEP
 from src.database import db_session
 from src.models import Bookmark, Channel, Post, UserChannel
-from src.utils import plural_posts
 
 
 async def cmd_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args:
-        await update.message.reply_text(
-            "📌 Использование: <code>/save &lt;ID поста&gt;</code>",
-            parse_mode="HTML",
-        )
-        return
-    try:
-        post_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ ID должен быть числом.")
-        return
-
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
+
+        if not context.args:
+            await update.message.reply_text(t("save_usage", lang), parse_mode="HTML")
+            return
+        try:
+            post_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text(t("save_bad_id", lang))
+            return
+
         post = db.query(Post).filter_by(id=post_id).first()
         if not post:
             await update.message.reply_text(
-                f"❌ Пост <b>#{post_id}</b> не найден.", parse_mode="HTML"
+                t("sum_not_found", lang, id=post_id), parse_mode="HTML"
             )
             return
         if db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first():
             await update.message.reply_text(
-                f"ℹ️ Пост <b>#{post_id}</b> уже в закладках.", parse_mode="HTML"
+                t("save_already", lang, id=post_id), parse_mode="HTML"
             )
             return
         db.add(Bookmark(user_id=user.id, post_id=post_id))
         db.commit()
         await update.message.reply_text(
-            f"📌 <b>Пост #{post_id} сохранён</b>\n\n"
-            "Посмотреть все: <code>/saved</code>",
-            parse_mode="HTML",
+            t("save_done", lang, id=post_id), parse_mode="HTML"
         )
 
 
 async def cmd_unsave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args:
-        await update.message.reply_text(
-            "Использование: <code>/unsave &lt;ID поста&gt;</code>", parse_mode="HTML"
-        )
-        return
-    try:
-        post_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ ID должен быть числом.")
-        return
-
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
+
+        if not context.args:
+            await update.message.reply_text(t("unsave_usage", lang), parse_mode="HTML")
+            return
+        try:
+            post_id = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text(t("save_bad_id", lang))
+            return
+
         bm = db.query(Bookmark).filter_by(user_id=user.id, post_id=post_id).first()
         if not bm:
             await update.message.reply_text(
-                f"ℹ️ Пост <b>#{post_id}</b> не в закладках.", parse_mode="HTML"
+                t("unsave_not_in", lang, id=post_id), parse_mode="HTML"
             )
             return
         db.delete(bm)
         db.commit()
         await update.message.reply_text(
-            f"🗑 Пост <b>#{post_id}</b> удалён из закладок.", parse_mode="HTML"
+            t("unsave_done", lang, id=post_id), parse_mode="HTML"
         )
 
 
 async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
         bookmarks = (
             db.query(Bookmark)
             .filter_by(user_id=user.id)
@@ -85,15 +83,11 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             .all()
         )
         if not bookmarks:
-            await update.message.reply_text(
-                "📌 <b>Закладки пусты</b>\n\n"
-                "Сохраняйте посты командой <code>/save ID</code>",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text(t("saved_empty", lang), parse_mode="HTML")
             return
 
         n = len(bookmarks)
-        lines = [f"📌 <b>Закладки</b> — {n} {plural_posts(n)}"]
+        lines = [t("saved_header", lang, n=n, p=plural_posts(n, lang))]
         for bm in bookmarks:
             post = bm.post
             ch_name = post.channel.username if post.channel else "?"
@@ -103,7 +97,7 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 if len(post.text) > 120:
                     preview += "…"
             else:
-                preview = "<i>[медиа]</i>"
+                preview = t("media_stub", lang)
             lines.append(
                 f"{SEP}\n"
                 f"📢 <b>@{ch_name}</b>  <i>{date_str}</i>\n"
@@ -117,15 +111,11 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     from sqlalchemy import func as sqlfunc
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
         ucs = db.query(UserChannel).filter_by(user_id=user.id, is_active=True).all()
 
         if not ucs:
-            await update.message.reply_text(
-                "📊 <b>Статистика</b>\n\n"
-                "Каналы ещё не добавлены.\n\n"
-                "<code>/add_channel @username</code> — начать",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text(t("stats_empty", lang), parse_mode="HTML")
             return
 
         channel_ids = [uc.channel_id for uc in ucs]
@@ -148,18 +138,12 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             .all()
         )
 
-        lines = [
-            "📊 <b>Ваша статистика</b>",
-            "",
-            f"  📢 Каналов: <b>{len(ucs)}</b>",
-            f"  📝 Постов всего: <b>{total_posts}</b>",
-            f"  📅 За 7 дней: <b>{week_posts}</b>",
-            f"  📌 Закладок: <b>{bookmarks_count}</b>",
-        ]
+        lines = [t("stats_body", lang, channels=len(ucs), total=total_posts,
+                   week=week_posts, bookmarks=bookmarks_count)]
         if top:
-            lines += ["", SEP, "<b>Топ каналов за неделю:</b>"]
+            lines += ["", SEP, t("stats_top", lang)]
             medals = ["🥇", "🥈", "🥉"]
             for i, (username, cnt) in enumerate(top):
-                lines.append(f"  {medals[i]} @{username} — {cnt} {plural_posts(cnt)}")
+                lines.append(f"  {medals[i]} @{username} — {cnt} {plural_posts(cnt, lang)}")
 
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")

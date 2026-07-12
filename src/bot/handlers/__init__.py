@@ -37,6 +37,7 @@ from src.bot.handlers.channels import (
 )
 from src.bot.handlers.general import (
     cmd_help,
+    cmd_language,
     cmd_quiet,
     cmd_refer,
     cmd_start,
@@ -49,7 +50,7 @@ __all__ = [
     "btn_add_channel_prompt", "btn_channels", "btn_digest", "btn_summary_prompt",
     "callback_handler", "cmd_add_channel", "cmd_admin", "cmd_aifilter",
     "cmd_autosummary", "cmd_channels", "cmd_digest", "cmd_filter",
-    "cmd_filter_link", "cmd_help", "cmd_quiet", "cmd_refer",
+    "cmd_filter_link", "cmd_help", "cmd_language", "cmd_quiet", "cmd_refer",
     "cmd_remove_channel", "cmd_save", "cmd_saved", "cmd_start", "cmd_stats",
     "cmd_status", "cmd_subscribe", "cmd_summary", "cmd_summary_link",
     "cmd_trial", "cmd_unsave", "handle_text",

@@ -30,6 +30,7 @@ from src.bot.handlers import (
     cmd_filter,
     cmd_filter_link,
     cmd_help,
+    cmd_language,
     cmd_quiet,
     cmd_refer,
     cmd_remove_channel,
@@ -45,13 +46,7 @@ from src.bot.handlers import (
     cmd_unsave,
     handle_text,
 )
-from src.bot.keyboards import (
-    BUTTON_ADD_CHANNEL,
-    BUTTON_CHANNELS,
-    BUTTON_DIGEST,
-    BUTTON_SUBSCRIBE,
-    BUTTON_SUMMARY,
-)
+from src.bot.i18n import btn_variants
 from src.bot.payments import handle_pre_checkout, handle_successful_payment
 from src.config import config
 
@@ -80,6 +75,7 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app = builder.build()
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
@@ -105,12 +101,12 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     # Clickable command links: /summary_21, /filter_@channel
     app.add_handler(MessageHandler(filters.Regex(r"^/summary_\d+"), cmd_summary_link))
     app.add_handler(MessageHandler(filters.Regex(r"^/filter_@?\w+"), cmd_filter_link))
-    # Reply keyboard buttons
-    app.add_handler(MessageHandler(filters.Text([BUTTON_CHANNELS]), btn_channels))
-    app.add_handler(MessageHandler(filters.Text([BUTTON_ADD_CHANNEL]), btn_add_channel_prompt))
-    app.add_handler(MessageHandler(filters.Text([BUTTON_SUMMARY]), btn_summary_prompt))
-    app.add_handler(MessageHandler(filters.Text([BUTTON_DIGEST]), btn_digest))
-    app.add_handler(MessageHandler(filters.Text([BUTTON_SUBSCRIBE]), cmd_subscribe))
+    # Reply keyboard buttons — match every language variant of each label
+    app.add_handler(MessageHandler(filters.Text(btn_variants("channels")), btn_channels))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("add")), btn_add_channel_prompt))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("summary")), btn_summary_prompt))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("digest")), btn_digest))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("subscribe")), cmd_subscribe))
     # Plain text — catches post ID after summary button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 

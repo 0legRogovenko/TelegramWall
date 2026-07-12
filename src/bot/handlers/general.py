@@ -1,4 +1,4 @@
-"""General commands: /start, /help, /status, /subscribe, /trial, /refer, /quiet."""
+"""General commands: /start, /language, /help, /status, /subscribe, /trial, /refer, /quiet."""
 from datetime import datetime, timedelta, timezone
 
 from telegram import Update
@@ -10,23 +10,31 @@ from src.bot.handlers.base import (
     _help_text,
     _sync_menu_commands,
 )
+from src.bot.i18n import lang_of, t, tier_label
 from src.bot.keyboards import (
     SEP,
     TIER_ICON,
-    TIER_LABEL,
+    language_keyboard,
     main_menu,
     start_keyboard,
     subscribe_keyboard,
     subscription_active_keyboard,
 )
-from src.bot.payments import price_label
 from src.config import config
 from src.database import db_session
 from src.models import Subscription, User, UserChannel
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(_help_text(), parse_mode="HTML")
+    with db_session() as db:
+        user = _get_or_create_user(db, update.effective_user)
+        await update.message.reply_text(_help_text(lang_of(user)), parse_mode="HTML")
+
+
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        t("lang_choose", "ru"), reply_markup=language_keyboard()
+    )
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -53,44 +61,35 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     from src.bot.app import ptb_app
                     await ptb_app.bot.send_message(
                         chat_id=referrer.telegram_id,
-                        text=(
-                            f"🎁 <b>+{config.REFERRAL_BONUS_DAYS} дней Basic!</b>\n\n"
-                            "По вашей реферальной ссылке зарегистрировался новый пользователь."
-                        ),
+                        text=t("ref_bonus", lang_of(referrer),
+                               days=config.REFERRAL_BONUS_DAYS),
                         parse_mode="HTML",
                     )
                 except Exception:
                     pass
 
+        # First contact: ask for the language before anything else
+        if not user.language:
+            await update.message.reply_text(
+                t("lang_choose", "ru"), reply_markup=language_keyboard()
+            )
+            return
+
+        lang = lang_of(user)
         if tier != "free":
             expires = user.active_subscription.expires_at.strftime("%d.%m.%Y")
-            icon = TIER_ICON.get(tier, "")
-            label = TIER_LABEL.get(tier, tier)
-            text = (
-                f"👋 <b>Привет, {name}!</b>\n\n"
-                f"{icon} <b>{label}</b> активна до <b>{expires}</b>\n\n"
-                f"{SEP}\n"
-                "<code>/channels</code> — мои каналы\n"
-                "<code>/add_channel @username</code> — добавить\n"
-                "<code>/summary_ID</code> — саммари поста"
-            )
             await update.message.reply_text(
-                text, parse_mode="HTML", reply_markup=main_menu(paid=True)
+                t("start_paid", lang, name=name, icon=TIER_ICON.get(tier, ""),
+                  label=tier_label(tier, lang), expires=expires, sep=SEP),
+                parse_mode="HTML", reply_markup=main_menu(paid=True, lang=lang),
             )
         else:
-            text = (
-                f"👋 <b>Привет, {name}!</b>\n\n"
-                "<b>TelegramWall</b> следит за Telegram-каналами вместо вас — "
-                "новые посты приходят прямо в этот чат.\n\n"
-                f"{SEP}\n"
-                "Начните с добавления канала:\n"
-                "<code>/add_channel @username</code>"
+            await update.message.reply_text(
+                t("start_free", lang, name=name, sep=SEP),
+                parse_mode="HTML", reply_markup=start_keyboard(lang),
             )
             await update.message.reply_text(
-                text, parse_mode="HTML", reply_markup=start_keyboard(),
-            )
-            await update.message.reply_text(
-                "Кнопки управления внизу 👇", reply_markup=main_menu(paid=False),
+                t("start_hint", lang), reply_markup=main_menu(paid=False, lang=lang),
             )
         await _sync_menu_commands(context.bot, update.effective_chat.id, user)
 
@@ -99,90 +98,70 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
         tier = user.subscription_tier
+        lang = lang_of(user)
 
         if tier != "free":
             expires = user.active_subscription.expires_at.strftime("%d.%m.%Y")
-            icon = TIER_ICON.get(tier, "")
-            label = TIER_LABEL.get(tier, tier)
             limit = user.channel_limit
             limit_str = "∞" if limit is None else str(limit)
 
-            lines = [
-                "📋 <b>Статус аккаунта</b>\n",
-                f"{icon} <b>{label}</b>",
-                f"  📅 Активна до <b>{expires}</b>",
-                f"  📢 Каналов: до {limit_str}",
-                SEP,
-            ]
+            features = ""
             if user.can_summary:
-                lines.append("  📝 Саммари по запросу ✅")
-            if user.can_auto_summary:
-                lines.append("  🤖 Авто-саммари ✅")
-                lines.append("  📰 Дайджест ✅")
-            else:
-                lines.append("  🤖 Авто-саммари — <i>только Pro</i>")
-                lines.append("  📰 Дайджест — <i>только Pro</i>")
-
+                features += t("status_f_summary", lang)
+            features += t(
+                "status_f_auto_ok" if user.can_auto_summary else "status_f_auto_pro", lang
+            )
+            quiet = ""
             if user.quiet_start is not None:
-                lines += [
-                    SEP,
-                    f"  🔕 Тихий режим: {user.quiet_start:02d}:00–{user.quiet_end:02d}:00 UTC",
-                ]
+                quiet = t("status_quiet", lang, sep=SEP,
+                          qs=user.quiet_start, qe=user.quiet_end)
 
             await update.message.reply_text(
-                "\n".join(lines),
+                t("status_paid", lang, icon=TIER_ICON.get(tier, ""),
+                  label=tier_label(tier, lang), expires=expires, limit=limit_str,
+                  sep=SEP, features=features, quiet=quiet),
                 parse_mode="HTML",
-                reply_markup=subscription_active_keyboard(tier),
+                reply_markup=subscription_active_keyboard(tier, lang),
             )
         else:
             active_count = (
                 db.query(UserChannel).filter_by(user_id=user.id, is_active=True).count()
             )
             await update.message.reply_text(
-                "📋 <b>Статус аккаунта</b>\n\n"
-                "  Тариф: Free\n"
-                f"  📢 Каналов: <b>{active_count} / {config.CHANNEL_LIMIT_FREE}</b>\n"
-                "  📝 Саммари: недоступно\n\n"
-                f"{SEP}\n"
-                "🎁 Попробуйте Pro бесплатно: <code>/trial</code>",
+                t("status_free", lang, count=active_count,
+                  limit=config.CHANNEL_LIMIT_FREE, sep=SEP),
                 parse_mode="HTML",
-                reply_markup=subscribe_keyboard(),
+                reply_markup=subscribe_keyboard(lang),
             )
 
 
 async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from src.bot.payments import price_label
+    with db_session() as db:
+        user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
     await update.message.reply_text(
-        "💳 <b>Тарифы TelegramWall</b>\n\n"
-        f"  Free — до {config.CHANNEL_LIMIT_FREE} каналов, без AI\n\n"
-        f"{SEP}\n"
-        f"  ⭐ <b>Basic</b> — {price_label('basic')} / 30 дней\n"
-        f"    до {config.CHANNEL_LIMIT_BASIC} каналов · саммари по запросу\n\n"
-        f"  💎 <b>Pro</b> — {price_label('pro')} / 30 дней\n"
-        "    ∞ каналов · авто-саммари · дайджест\n\n"
-        "  📅 Годовые тарифы — скидка 20%\n\n"
-        f"{SEP}\n"
-        "🆓 Попробовать бесплатно: <code>/trial</code>",
+        t("subscribe", lang, sep=SEP,
+          free_limit=config.CHANNEL_LIMIT_FREE, basic_limit=config.CHANNEL_LIMIT_BASIC,
+          basic_price=price_label("basic"), pro_price=price_label("pro")),
         parse_mode="HTML",
-        reply_markup=subscribe_keyboard(),
+        reply_markup=subscribe_keyboard(lang),
     )
 
 
 async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
         if user.trial_used:
             await update.message.reply_text(
-                "⚠️ <b>Пробный период уже использован</b>\n\n"
-                "Оформите подписку, чтобы продолжить:",
-                parse_mode="HTML",
-                reply_markup=subscribe_keyboard(),
+                t("trial_used", lang), parse_mode="HTML",
+                reply_markup=subscribe_keyboard(lang),
             )
             return
         if user.has_subscription:
             await update.message.reply_text(
-                "ℹ️ У вас уже есть активная подписка.\n\n"
-                "Используйте <code>/status</code> для просмотра.",
-                parse_mode="HTML",
+                t("trial_have_sub", lang), parse_mode="HTML",
             )
             return
 
@@ -191,15 +170,10 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user.trial_used = True
         db.commit()
         await update.message.reply_text(
-            f"🎉 <b>Pro 💎 активирован!</b>\n\n"
-            f"  Срок: {config.TRIAL_DAYS} дня\n"
-            f"  До: <b>{expires_at.strftime('%d.%m.%Y')}</b>\n\n"
-            f"{SEP}\n"
-            "Теперь доступно:\n"
-            "  📰 Дайджест и авто-саммари — <code>/digest</code>\n"
-            "  📢 Неограниченно каналов",
+            t("trial_ok", lang, days=config.TRIAL_DAYS,
+              date=expires_at.strftime("%d.%m.%Y"), sep=SEP),
             parse_mode="HTML",
-            reply_markup=main_menu(paid=True),
+            reply_markup=main_menu(paid=True, lang=lang),
         )
         await _sync_menu_commands(context.bot, update.effective_chat.id, user)
 
@@ -207,16 +181,12 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
         code = _ensure_referral_code(db, user)
         bot_info = await context.bot.get_me()
         link = f"https://t.me/{bot_info.username}?start=ref_{code}"
         await update.message.reply_text(
-            "🔗 <b>Реферальная программа</b>\n\n"
-            f"За каждого нового пользователя по вашей ссылке — "
-            f"<b>+{config.REFERRAL_BONUS_DAYS} дней</b> Basic.\n\n"
-            f"{SEP}\n"
-            "Ваша ссылка:\n"
-            f"<code>{link}</code>",
+            t("refer", lang, days=config.REFERRAL_BONUS_DAYS, link=link, sep=SEP),
             parse_mode="HTML",
         )
 
@@ -224,21 +194,17 @@ async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
+        lang = lang_of(user)
 
         if not context.args:
             if user.quiet_start is not None:
                 await update.message.reply_text(
-                    f"🔕 <b>Тихий режим активен</b>\n\n"
-                    f"  С {user.quiet_start:02d}:00 до {user.quiet_end:02d}:00 UTC\n\n"
-                    "<code>/quiet off</code> — выключить",
+                    t("quiet_active", lang, qs=user.quiet_start, qe=user.quiet_end),
                     parse_mode="HTML",
                 )
             else:
                 await update.message.reply_text(
-                    "🔔 <b>Тихий режим выключен</b>\n\n"
-                    "Включить: <code>/quiet ЧЧ ЧЧ</code>\n"
-                    "Пример: <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC",
-                    parse_mode="HTML",
+                    t("quiet_off_state", lang), parse_mode="HTML",
                 )
             return
 
@@ -247,16 +213,13 @@ async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user.quiet_end = None
             db.commit()
             await update.message.reply_text(
-                "🔔 <b>Тихий режим выключен</b>\n\nПосты приходят в любое время.",
-                parse_mode="HTML",
+                t("quiet_disabled", lang), parse_mode="HTML",
             )
             return
 
         if len(context.args) < 2:
             await update.message.reply_text(
-                "Укажите два часа: <code>/quiet ЧЧ ЧЧ</code>\n"
-                "Пример: <code>/quiet 23 9</code>",
-                parse_mode="HTML",
+                t("quiet_two_hours", lang), parse_mode="HTML",
             )
             return
 
@@ -265,14 +228,11 @@ async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if not (0 <= qs <= 23 and 0 <= qe <= 23):
                 raise ValueError
         except ValueError:
-            await update.message.reply_text("❌ Часы должны быть числами от 0 до 23.")
+            await update.message.reply_text(t("quiet_bad_hours", lang))
             return
 
         user.quiet_start, user.quiet_end = qs, qe
         db.commit()
         await update.message.reply_text(
-            f"🔕 <b>Тихий режим включён</b>\n\n"
-            f"  С {qs:02d}:00 до {qe:02d}:00 UTC\n\n"
-            "<code>/quiet off</code> — выключить",
-            parse_mode="HTML",
+            t("quiet_enabled", lang, qs=qs, qe=qe), parse_mode="HTML",
         )

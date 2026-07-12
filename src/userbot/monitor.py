@@ -15,12 +15,12 @@ from telethon.tl.types import (
     UpdateNewChannelMessage,
 )
 
+from src.bot.i18n import count_new_posts, lang_of, t
 from src.bot.keyboards import SEP
 from src.config import config
 from src.database import get_session
 from src.models import Channel, PendingPost, Post, User, UserChannel
-from src.services.summarizer import summarize
-from src.utils import plural_posts
+from src.services.summarizer import build_digest, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +132,9 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
     return result
 
 
-def _should_auto_summary(db, telegram_id: int) -> bool:
+def _user_lang(db, telegram_id: int) -> str:
     user = db.query(User).filter_by(telegram_id=telegram_id).first()
-    return bool(user and user.auto_summary and user.can_auto_summary)
+    return lang_of(user) if user else "ru"
 
 
 async def _process_message(client: TelegramClient, channel: Channel, msg) -> None:
@@ -248,8 +248,14 @@ async def _deliver_to_user(
 
     db = get_session()
     try:
-        if _should_auto_summary(db, tg_id) and text and len(text.strip()) >= 50:
-            await _send_summary(client, tg_id, post_id, text, channel_label, db)
+        user = db.query(User).filter_by(telegram_id=tg_id).first()
+        if (
+            user and user.auto_summary and user.can_auto_summary
+            and text and len(text.strip()) >= 50
+        ):
+            await _send_summary(
+                client, tg_id, post_id, text, channel_label, db, lang_of(user)
+            )
     finally:
         db.close()
 
@@ -261,6 +267,7 @@ async def _send_summary(
     text: str,
     channel_label: str,
     db,
+    lang: str = "ru",
 ) -> None:
     post = db.query(Post).filter_by(id=post_id).first()
     if not post:
@@ -268,7 +275,7 @@ async def _send_summary(
     if not post.summary:
         try:
             # to_thread: the Anthropic call is blocking — keep the event loop alive
-            post.summary = await asyncio.to_thread(summarize, text)
+            post.summary = await asyncio.to_thread(summarize, text, lang)
             db.commit()
         except Exception as exc:
             logger.error("Summarization failed for post %s: %s", post_id, exc)
@@ -277,33 +284,30 @@ async def _send_summary(
     try:
         await ptb_app.bot.send_message(
             chat_id=tg_id,
-            text=(
-                f"📝 <b>Саммари</b> из <b>{html.escape(channel_label)}</b>:\n\n"
-                f"{html.escape(post.summary)}\n\n"
-                f"Запросить снова: /summary_{post_id}"
-            ),
+            text=t("auto_summary_msg", lang, label=html.escape(channel_label),
+                   text=html.escape(post.summary), id=post_id),
             parse_mode="HTML",
         )
     except Exception as exc:
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
 
 
-def _format_batch_message(label: str, username: str, posts: list[dict]) -> str:
+def _format_batch_message(
+    label: str, username: str, posts: list[dict], lang: str = "ru"
+) -> str:
     """Summary message for several posts from one channel.
 
     posts: [{"post_id": int, "text": str}]
     """
     n = len(posts)
-    safe_label = html.escape(label)
-    lines = [f"📢 <b>{safe_label}</b> — {n} {'новый' if n == 1 else 'новых'} {plural_posts(n)}"]
+    lines = [t("batch_header", lang, label=html.escape(label),
+               phrase=count_new_posts(n, lang))]
     for i, p in enumerate(posts, 1):
-        preview = html.escape((p["text"] or "[медиа]")[:120])
+        preview = html.escape((p["text"] or "[media]")[:120])
         if len(p["text"] or "") > 120:
             preview += "…"
         lines.append(f"{SEP}\n{i}. {preview}\n/summary_{p['post_id']}")
-    lines.append(
-        f'{SEP}\n🔗 <a href="https://t.me/{username}">Открыть @{username}</a>'
-    )
+    lines.append(f"{SEP}\n" + t("open_channel", lang, u=username))
     return "\n\n".join(lines)
 
 
@@ -404,6 +408,7 @@ async def _flush_pending() -> None:
             text = _format_batch_message(
                 label, channel.username,
                 [{"post_id": p.id, "text": p.text or ""} for p in posts],
+                lang=_user_lang(db, tg_id),
             )
             try:
                 await ptb_app.bot.send_message(
@@ -444,8 +449,24 @@ async def _pending_delivery_loop() -> None:
             logger.warning("Scheduled batch delivery failed: %s", exc)
 
 
-async def _build_and_send_digest(telegram_id: int, db) -> bool:
-    """Build and send digest for one user. Returns True if sent, False if nothing to send."""
+def _digest_html(ai_text: str) -> str:
+    """Escape AI output for HTML parse_mode and bold the source headers."""
+    lines = []
+    for line in ai_text.splitlines():
+        esc = html.escape(line)
+        if esc.startswith("📢"):
+            esc = f"<b>{esc}</b>"
+        lines.append(esc)
+    return "\n".join(lines)
+
+
+async def _build_and_send_digest(
+    telegram_id: int, db, channel_ids: list[int] | None = None
+) -> bool:
+    """AI-generated digest grouped by source. Returns True if sent.
+
+    channel_ids: user-picked sources; None = all active channels (daily digest).
+    """
     from src.bot.app import ptb_app
     if ptb_app is None:
         return False
@@ -453,52 +474,53 @@ async def _build_and_send_digest(telegram_id: int, db) -> bool:
     user = db.query(User).filter_by(telegram_id=telegram_id).first()
     if not user or not user.can_auto_summary:
         return False
+    lang = lang_of(user)
 
     ucs = db.query(UserChannel).filter_by(user_id=user.id, is_active=True).all()
-    channel_ids = [uc.channel_id for uc in ucs]
-    if not channel_ids:
+    if channel_ids is not None:
+        wanted = set(channel_ids)
+        ucs = [uc for uc in ucs if uc.channel_id in wanted]
+    if not ucs:
         return False
 
     since = datetime.now(timezone.utc) - timedelta(hours=24)
-    posts = (
-        db.query(Post)
-        .filter(Post.channel_id.in_(channel_ids), Post.created_at >= since)
-        .order_by(Post.created_at.desc())
-        .limit(10)
-        .all()
-    )
-    if not posts:
+    sections: list[tuple[str, list[str]]] = []
+    for uc in ucs:
+        posts = (
+            db.query(Post)
+            .filter(
+                Post.channel_id == uc.channel_id,
+                Post.created_at >= since,
+                Post.text.isnot(None),
+                Post.text != "",
+            )
+            .order_by(Post.created_at.desc())
+            .limit(8)
+            .all()
+        )
+        if posts:
+            sections.append((uc.channel.username, [p.text for p in posts]))
+    if not sections:
         return False
 
-    ch_map = {uc.channel_id: uc.channel.username for uc in ucs}
-    date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    lines = [f"📰 <b>Дайджест {date_str}</b> — {len(posts)} {plural_posts(len(posts))}"]
-    for i, post in enumerate(posts, 1):
-        ch_name = ch_map.get(post.channel_id, "?")
-        time_str = post.created_at.strftime("%H:%M") if post.created_at else ""
-        preview = html.escape((post.text or "[медиа]")[:200])
-        if len(post.text or "") > 200:
-            preview += "…"
-        lines.append(
-            f"{SEP}\n"
-            f"{i}. 📢 <b>@{ch_name}</b> <i>{time_str} UTC</i>\n"
-            f"{preview}\n"
-            f"/summary_{post.id}"
-        )
+    ai_text = await asyncio.to_thread(build_digest, sections, lang)
 
+    date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
+    header = t("digest_header", lang, date=date_str)
     await ptb_app.bot.send_message(
         chat_id=telegram_id,
-        text="\n\n".join(lines),
+        text=f"{header}\n\n{_digest_html(ai_text)}",
         parse_mode="HTML",
+        disable_web_page_preview=True,
     )
     return True
 
 
-async def send_digest_now(telegram_id: int) -> bool:
+async def send_digest_now(telegram_id: int, channel_ids: list[int] | None = None) -> bool:
     """Send digest on demand for a specific user. Returns True on success."""
     db = get_session()
     try:
-        return await _build_and_send_digest(telegram_id, db)
+        return await _build_and_send_digest(telegram_id, db, channel_ids)
     except Exception as exc:
         logger.warning("On-demand digest failed for user %s: %s", telegram_id, exc)
         return False
