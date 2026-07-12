@@ -33,6 +33,10 @@ def init_db() -> None:
             conn,
             "ALTER TABLE subscriptions ADD COLUMN tier VARCHAR(16) DEFAULT 'basic'",
         )
+        _run_migration(
+            conn,
+            "ALTER TABLE subscriptions ADD COLUMN payment_currency VARCHAR(3) NOT NULL DEFAULT 'XTR'",
+        )
         # users — new columns
         _run_migration(conn, "ALTER TABLE users ADD COLUMN digest_enabled BOOLEAN DEFAULT FALSE")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")

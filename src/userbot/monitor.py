@@ -4,6 +4,7 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.orm import joinedload
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.types import (
@@ -40,21 +41,34 @@ def _get_media_type(message) -> str | None:
     return None
 
 
-def _allowed_channel_ids(db, user_id: int, limit: int) -> set[int]:
-    """Return the set of channel_ids that fit within the user's current tier limit.
+def _batch_allowed_channel_ids(db, limited_users: list[tuple[int, int]]) -> dict[int, set[int]]:
+    """Return {user_id: set of allowed channel_ids} for users on limited tiers.
 
-    Uses creation order: the first `limit` channels the user added are
-    always delivered; channels added later (when on a higher tier) are
-    silently skipped once the subscription downgrades.
+    Queries ALL UserChannels (active or not) so deactivating old channels
+    cannot shift newer ones into the allowed window. Stable tie-breaking via
+    (created_at, id) prevents non-determinism at identical timestamps.
+    Single batch query replaces N individual queries.
     """
+    if not limited_users:
+        return {}
+    user_ids = [uid for uid, _ in limited_users]
+    limits = {uid: lim for uid, lim in limited_users}
+
     rows = (
-        db.query(UserChannel.channel_id)
-        .filter_by(user_id=user_id, is_active=True)
-        .order_by(UserChannel.created_at)
-        .limit(limit)
+        db.query(UserChannel.user_id, UserChannel.channel_id)
+        .filter(UserChannel.user_id.in_(user_ids))
+        .order_by(UserChannel.user_id, UserChannel.created_at, UserChannel.id)
         .all()
     )
-    return {row[0] for row in rows}
+
+    result: dict[int, set[int]] = {}
+    counts: dict[int, int] = {}
+    for user_id, ch_id in rows:
+        seen = counts.get(user_id, 0)
+        if seen < limits[user_id]:
+            result.setdefault(user_id, set()).add(ch_id)
+            counts[user_id] = seen + 1
+    return result
 
 
 def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int, str | None]]:
@@ -68,7 +82,20 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
        The UserChannel record is NOT modified (soft enforcement).
     """
     now_hour = datetime.now(timezone.utc).hour
-    ucs = db.query(UserChannel).filter_by(channel_id=channel_id, is_active=True).all()
+    ucs = (
+        db.query(UserChannel)
+        .filter_by(channel_id=channel_id, is_active=True)
+        .options(joinedload(UserChannel.user).joinedload(User.subscriptions))
+        .all()
+    )
+
+    limited_users = [
+        (uc.user.id, uc.user.channel_limit)
+        for uc in ucs
+        if uc.user.channel_limit is not None
+    ]
+    allowed_map = _batch_allowed_channel_ids(db, limited_users)
+
     result = []
     for uc in ucs:
         user = uc.user
@@ -88,13 +115,11 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
             continue
 
         # Channel limit enforcement (soft): skip if channel is outside allowed set
-        limit = user.channel_limit
-        if limit is not None:
-            allowed = _allowed_channel_ids(db, user.id, limit)
-            if channel_id not in allowed:
+        if user.channel_limit is not None:
+            if channel_id not in allowed_map.get(user.id, set()):
                 logger.debug(
                     "Skipping user %s (channel %s exceeds tier limit %d)",
-                    user.telegram_id, channel_id, limit,
+                    user.telegram_id, channel_id, user.channel_limit,
                 )
                 continue
 

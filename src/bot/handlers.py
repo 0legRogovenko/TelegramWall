@@ -1,5 +1,6 @@
 """Bot command handlers."""
 import asyncio
+import html
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +26,14 @@ from src.services.summarizer import summarize
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _guard_pro(query, user) -> bool:
+    """Return True if user has Pro; send an alert and return False otherwise."""
+    if not user.can_auto_summary:
+        await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
+        return False
+    return True
+
 
 def _get_or_create_user(db, tg_user) -> User:
     user = db.query(User).filter_by(telegram_id=tg_user.id).first()
@@ -713,8 +722,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif data == "toggle_auto_summary":
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
-            if not user.can_auto_summary:
-                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
+            if not await _guard_pro(query, user):
                 return
             user.auto_summary = not user.auto_summary
             db.commit()
@@ -725,8 +733,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif data == "toggle_digest":
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
-            if not user.can_auto_summary:
-                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
+            if not await _guard_pro(query, user):
                 return
             user.digest_enabled = not user.digest_enabled
             db.commit()
@@ -737,8 +744,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif data == "request_digest":
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
-            if not user.can_auto_summary:
-                await query.answer("❌ Доступно только на Pro 💎", show_alert=True)
+            if not await _guard_pro(query, user):
                 return
         await query.answer("Формирую дайджест…")
         from src.userbot.monitor import send_digest_now
@@ -877,9 +883,12 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             post = bm.post
             ch_name = post.channel.username if post.channel else "?"
             date_str = bm.created_at.strftime("%d.%m  %H:%M") if bm.created_at else ""
-            preview = (post.text or "<i>[медиа]</i>")[:120]
-            if len(post.text or "") > 120:
-                preview += "…"
+            if post.text:
+                preview = html.escape(post.text[:120])
+                if len(post.text) > 120:
+                    preview += "…"
+            else:
+                preview = "<i>[медиа]</i>"
             lines.append(
                 f"{SEP}\n"
                 f"📢 <b>@{ch_name}</b>  <i>{date_str}</i>\n"

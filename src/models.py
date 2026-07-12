@@ -162,6 +162,7 @@ class Subscription(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     tier: Mapped[str] = mapped_column(String(16), default="basic", server_default="basic")
     stars_paid: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="XTR")
     payment_charge_id: Mapped[str | None] = mapped_column(String(256))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

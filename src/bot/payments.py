@@ -6,7 +6,10 @@ Active mode is determined by config.YOOKASSA_PROVIDER_TOKEN:
 
 Pre-checkout and successful_payment handling is identical for both modes.
 """
+import logging
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -49,7 +52,10 @@ _TIER_META: dict[str, dict] = {
 
 def price_label(tier: str) -> str:
     """Human-readable price for a tier in the active payment currency."""
-    meta = _TIER_META.get(tier, _TIER_META["basic"])
+    meta = _TIER_META.get(tier)
+    if meta is None:
+        logger.warning("price_label: unknown tier %r, falling back to basic", tier)
+        meta = _TIER_META["basic"]
     if config.YOOKASSA_PROVIDER_TOKEN:
         return f"{meta['rub']() // 100} ₽"
     return f"{meta['stars']()} ⭐"
@@ -109,7 +115,8 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
         db.add(Subscription(
             user_id=user.id,
             tier=tier,
-            stars_paid=payment.total_amount,           # kopecks for RUB, Stars for XTR
+            stars_paid=payment.total_amount,
+            payment_currency="RUB" if config.YOOKASSA_PROVIDER_TOKEN else "XTR",
             payment_charge_id=payment.telegram_payment_charge_id,
             expires_at=expires_at,
         ))
