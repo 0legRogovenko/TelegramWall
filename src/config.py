@@ -60,6 +60,11 @@ class Config:
     TRIAL_DAYS: int = int(os.getenv("TRIAL_DAYS", "3"))
     REFERRAL_BONUS_DAYS: int = int(os.getenv("REFERRAL_BONUS_DAYS", "7"))
     DIGEST_HOUR_UTC: int = int(os.getenv("DIGEST_HOUR_UTC", "8"))
+    # Hours (UTC) when queued multi-post batches are delivered.
+    # Default "6,20" = 09:00 and 23:00 MSK.
+    BATCH_HOURS_UTC: list[int] = [
+        int(x) for x in os.getenv("BATCH_HOURS_UTC", "6,20").split(",") if x.strip()
+    ]
 
     # Flask
     SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "change-me")

@@ -27,6 +27,7 @@ from src.bot.handlers import (
     cmd_channels,
     cmd_digest,
     cmd_filter,
+    cmd_filter_link,
     cmd_help,
     cmd_quiet,
     cmd_refer,
@@ -38,11 +39,18 @@ from src.bot.handlers import (
     cmd_status,
     cmd_subscribe,
     cmd_summary,
+    cmd_summary_link,
     cmd_trial,
     cmd_unsave,
     handle_text,
 )
-from src.bot.keyboards import BUTTON_ADD_CHANNEL, BUTTON_CHANNELS, BUTTON_DIGEST, BUTTON_SUMMARY
+from src.bot.keyboards import (
+    BUTTON_ADD_CHANNEL,
+    BUTTON_CHANNELS,
+    BUTTON_DIGEST,
+    BUTTON_SUBSCRIBE,
+    BUTTON_SUMMARY,
+)
 from src.bot.payments import handle_pre_checkout, handle_successful_payment
 from src.config import config
 
@@ -89,11 +97,15 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
+    # Clickable command links: /summary_21, /filter_@channel
+    app.add_handler(MessageHandler(filters.Regex(r"^/summary_\d+"), cmd_summary_link))
+    app.add_handler(MessageHandler(filters.Regex(r"^/filter_@?\w+"), cmd_filter_link))
     # Reply keyboard buttons
     app.add_handler(MessageHandler(filters.Text([BUTTON_CHANNELS]), btn_channels))
     app.add_handler(MessageHandler(filters.Text([BUTTON_ADD_CHANNEL]), btn_add_channel_prompt))
     app.add_handler(MessageHandler(filters.Text([BUTTON_SUMMARY]), btn_summary_prompt))
     app.add_handler(MessageHandler(filters.Text([BUTTON_DIGEST]), btn_digest))
+    app.add_handler(MessageHandler(filters.Text([BUTTON_SUBSCRIBE]), cmd_subscribe))
     # Plain text — catches post ID after summary button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 

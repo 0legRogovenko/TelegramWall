@@ -47,6 +47,17 @@ def init_db() -> None:
         # user_channels
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN keywords TEXT")
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN ai_filter TEXT")
+        # pending_posts — queued multi-post batches
+        _run_migration(conn, """
+            CREATE TABLE IF NOT EXISTS pending_posts (
+                id SERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL,
+                channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(telegram_id, post_id)
+            )
+        """)
         # bookmarks
         _run_migration(conn, """
             CREATE TABLE IF NOT EXISTS bookmarks (

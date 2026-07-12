@@ -109,7 +109,7 @@ class TestCmdAddChannel:
     async def test_adds_channel_and_creates_user_channel(self, db):
         create_user(db, telegram_id=3002)
         update = make_update(user_id=3002)
-        await cmd_add_channel(update, make_context(args=["newchan3002"]))
+        await cmd_add_channel(update, make_context(args=["@newchan3002"]))
         user = db.query(User).filter_by(telegram_id=3002).first()
         uc = db.query(UserChannel).filter_by(user_id=user.id).first()
         assert uc is not None
@@ -122,12 +122,21 @@ class TestCmdAddChannel:
         ch = db.query(Channel).filter_by(username="atchannel3003").first()
         assert ch is not None
 
+    async def test_rejects_username_without_at_sign(self, db):
+        from src.models import Channel
+        create_user(db, telegram_id=3007)
+        update = make_update(user_id=3007)
+        await cmd_add_channel(update, make_context(args=["noatchan3007"]))
+        reply = update.message.reply_text.call_args[0][0]
+        assert "@" in reply
+        assert db.query(Channel).filter_by(username="noatchan3007").first() is None
+
     async def test_duplicate_channel_shows_already_added_message(self, db):
         user = create_user(db, telegram_id=3004)
         channel = create_channel(db, username="dupechan3004")
         subscribe_user_to_channel(db, user, channel)
         update = make_update(user_id=3004)
-        await cmd_add_channel(update, make_context(args=["dupechan3004"]))
+        await cmd_add_channel(update, make_context(args=["@dupechan3004"]))
         reply = update.message.reply_text.call_args[0][0]
         assert "уже" in reply
 
@@ -136,7 +145,7 @@ class TestCmdAddChannel:
         channel = create_channel(db, username="pausedchan3005")
         subscribe_user_to_channel(db, user, channel, is_active=False)
         update = make_update(user_id=3005)
-        await cmd_add_channel(update, make_context(args=["pausedchan3005"]))
+        await cmd_add_channel(update, make_context(args=["@pausedchan3005"]))
         uc = db.query(UserChannel).filter_by(user_id=user.id, channel_id=channel.id).first()
         assert uc.is_active is True
 
@@ -147,7 +156,7 @@ class TestCmdAddChannel:
             ch = create_channel(db, username=f"limitchan3006_{i}")
             subscribe_user_to_channel(db, user, ch)
         update = make_update(user_id=3006)
-        await cmd_add_channel(update, make_context(args=["extrachan3006"]))
+        await cmd_add_channel(update, make_context(args=["@extrachan3006"]))
         reply = update.message.reply_text.call_args[0][0]
         assert "Лимит" in reply or "лимит" in reply
 

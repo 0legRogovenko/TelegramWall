@@ -29,13 +29,12 @@ async def _async_main(loop: asyncio.AbstractEventLoop) -> None:
     ptb_app = build_ptb_app(loop)
     await ptb_app.initialize()
 
+    # Default (free) command set. Paid users get the extended set per-chat
+    # via _sync_menu_commands on /start, /trial and successful payment.
     await ptb_app.bot.set_my_commands([
         BotCommand("start",       "Начало работы"),
         BotCommand("channels",    "Мои каналы"),
         BotCommand("add_channel", "Добавить канал"),
-        BotCommand("summary",     "Саммари поста по ID"),
-        BotCommand("digest",      "AI-режим: дайджест и авто-саммари"),
-        BotCommand("filter",      "Фильтр для канала (слова или AI)"),
         BotCommand("subscribe",   "Тарифы и подписка"),
         BotCommand("help",        "Все команды"),
     ])

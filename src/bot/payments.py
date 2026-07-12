@@ -128,7 +128,12 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
             else "✅ Саммари по запросу (/summary)"
         )
         date_str = expires_at.strftime("%d.%m.%Y")
+        from src.bot.handlers import _sync_menu_commands  # local: avoids circular import
+        from src.bot.keyboards import main_menu
+        db.refresh(user)
         await update.message.reply_text(
             f"✅ Подписка <b>{meta['label']}</b> активирована до {date_str}!\n\n{perks}",
             parse_mode="HTML",
+            reply_markup=main_menu(paid=True),
         )
+        await _sync_menu_commands(context.bot, update.effective_chat.id, user)

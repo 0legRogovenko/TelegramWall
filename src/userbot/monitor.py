@@ -14,9 +14,10 @@ from telethon.tl.types import (
     UpdateNewChannelMessage,
 )
 
+from src.bot.keyboards import SEP
 from src.config import config
 from src.database import get_session
-from src.models import Channel, Post, User, UserChannel
+from src.models import Channel, PendingPost, Post, User, UserChannel
 from src.services.summarizer import summarize
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,16 @@ _client: TelegramClient | None = None
 POLL_INTERVAL = 30
 BATCH_WINDOW_SECS = 90
 
-# (tg_id, channel_id) → {"posts": [...], "label": str, "first_at": float}
+# (tg_id, channel_id) → {"posts": [...], "label": str, "username": str, "first_at": float}
 _batch_buffer: dict[tuple[int, int], dict] = {}
+
+
+def _plural_posts(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return "пост"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "поста"
+    return "постов"
 
 
 def _get_media_type(message) -> str | None:
@@ -186,6 +195,7 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
             _batch_buffer[key] = {
                 "posts": [],
                 "label": channel_label,
+                "username": channel.username,
                 "first_at": time.monotonic(),
             }
         _batch_buffer[key]["posts"].append({"post_id": post_id, "text": text, "msg": msg})
@@ -274,7 +284,7 @@ async def _send_summary(
             chat_id=tg_id,
             text=(
                 f"📝 <b>Саммари</b> из <b>{channel_label}</b>:\n\n{post.summary}\n\n"
-                f"Запросить снова: /summary {post_id}"  # noqa: E231
+                f"Запросить снова: /summary_{post_id}"
             ),
             parse_mode="HTML",
         )
@@ -282,38 +292,48 @@ async def _send_summary(
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
 
 
-async def _send_batch(client: TelegramClient, tg_id: int, entry: dict) -> None:
-    from src.bot.app import ptb_app
-    posts = entry["posts"]
-    label = entry["label"]
+def _format_batch_message(label: str, username: str, posts: list[dict]) -> str:
+    """Summary message for several posts from one channel.
 
-    if len(posts) == 1:
-        p = posts[0]
-        await _deliver_to_user(client, tg_id, p["msg"], label, p["post_id"], p["text"])
-        return
-
-    if ptb_app is None:
-        return
-
-    sep = "―――――――――――――――"
-    lines = [f"📢 <b>{label}</b> — {len(posts)} новых поста"]
+    posts: [{"post_id": int, "text": str}]
+    """
+    n = len(posts)
+    lines = [f"📢 <b>{label}</b> — {n} {'новый' if n == 1 else 'новых'} {_plural_posts(n)}"]
     for i, p in enumerate(posts, 1):
         preview = (p["text"] or "[медиа]")[:120]
         if len(p["text"] or "") > 120:
             preview += "…"
-        lines.append(f"{sep}\n{i}. {preview}\n/summary {p['post_id']}")
+        lines.append(f"{SEP}\n{i}. {preview}\n/summary_{p['post_id']}")
+    lines.append(
+        f'{SEP}\n🔗 <a href="https://t.me/{username}">Открыть @{username}</a>'
+    )
+    return "\n\n".join(lines)
+
+
+def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
+    """Persist a multi-post batch for scheduled delivery (survives restarts)."""
+    db = get_session()
     try:
-        await ptb_app.bot.send_message(
-            chat_id=tg_id,
-            text="\n\n".join(lines),
-            parse_mode="HTML",
-        )
-        logger.info("✅ Batch (%d posts) from %s → user %s", len(posts), label, tg_id)
+        for p in posts:
+            exists = db.query(PendingPost).filter_by(
+                telegram_id=tg_id, post_id=p["post_id"]
+            ).first()
+            if not exists:
+                db.add(PendingPost(
+                    telegram_id=tg_id, channel_id=channel_id, post_id=p["post_id"]
+                ))
+        db.commit()
+        logger.info("Queued %d post(s) for user %s (delivery at %s UTC)",
+                    len(posts), tg_id, config.BATCH_HOURS_UTC)
     except Exception as exc:
-        logger.warning("Cannot send batch to user %s: %s", tg_id, exc)
+        logger.warning("Cannot queue pending posts for user %s: %s", tg_id, exc)
+        db.rollback()
+    finally:
+        db.close()
 
 
 async def _batch_flush_loop(client: TelegramClient) -> None:
+    """Every 30s: single posts → deliver now; multi-post dumps → queue for 9/23."""
     while True:
         await asyncio.sleep(30)
         now = time.monotonic()
@@ -325,11 +345,92 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
             entry = _batch_buffer.pop(key, None)
             if not entry:
                 continue
-            tg_id, _ = key
+            tg_id, channel_id = key
             try:
-                await _send_batch(client, tg_id, entry)
+                posts = entry["posts"]
+                if len(posts) == 1:
+                    p = posts[0]
+                    await _deliver_to_user(
+                        client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"]
+                    )
+                else:
+                    _queue_pending(tg_id, channel_id, posts)
             except Exception as exc:
                 logger.warning("Batch flush error for user %s: %s", tg_id, exc)
+
+
+async def _flush_pending() -> None:
+    """Deliver all queued multi-post batches, grouped by user + channel."""
+    from src.bot.app import ptb_app
+    if ptb_app is None:
+        return
+
+    db = get_session()
+    try:
+        rows = (
+            db.query(PendingPost)
+            .order_by(PendingPost.telegram_id, PendingPost.channel_id, PendingPost.post_id)
+            .all()
+        )
+        if not rows:
+            return
+
+        groups: dict[tuple[int, int], list[int]] = {}
+        for r in rows:
+            groups.setdefault((r.telegram_id, r.channel_id), []).append(r.post_id)
+
+        for (tg_id, channel_id), post_ids in groups.items():
+            channel = db.query(Channel).filter_by(id=channel_id).first()
+            if not channel:
+                continue
+            posts = (
+                db.query(Post)
+                .filter(Post.id.in_(post_ids))
+                .order_by(Post.id)
+                .all()
+            )
+            label = channel.title or f"@{channel.username}"
+            text = _format_batch_message(
+                label, channel.username,
+                [{"post_id": p.id, "text": p.text or ""} for p in posts],
+            )
+            try:
+                await ptb_app.bot.send_message(
+                    chat_id=tg_id, text=text, parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+                db.query(PendingPost).filter(
+                    PendingPost.telegram_id == tg_id,
+                    PendingPost.channel_id == channel_id,
+                    PendingPost.post_id.in_(post_ids),
+                ).delete(synchronize_session=False)
+                db.commit()
+                logger.info("✅ Scheduled batch (%d posts) @%s → user %s",
+                            len(posts), channel.username, tg_id)
+            except Exception as exc:
+                db.rollback()
+                logger.warning("Cannot send scheduled batch to user %s: %s", tg_id, exc)
+    finally:
+        db.close()
+
+
+async def _pending_delivery_loop() -> None:
+    """Fire queued batch delivery at each hour in BATCH_HOURS_UTC (e.g. 6 и 20 UTC)."""
+    hours = sorted(set(config.BATCH_HOURS_UTC)) or [6, 20]
+    while True:
+        now = datetime.now(timezone.utc)
+        candidates = [
+            now.replace(hour=h, minute=0, second=0, microsecond=0) for h in hours
+        ]
+        future = [t for t in candidates if t > now]
+        target = future[0] if future else candidates[0] + timedelta(days=1)
+        sleep_secs = (target - now).total_seconds()
+        logger.info("Next scheduled batch delivery in %.0f minutes", sleep_secs / 60)
+        await asyncio.sleep(sleep_secs)
+        try:
+            await _flush_pending()
+        except Exception as exc:
+            logger.warning("Scheduled batch delivery failed: %s", exc)
 
 
 async def _build_and_send_digest(telegram_id: int, db) -> bool:
@@ -360,8 +461,7 @@ async def _build_and_send_digest(telegram_id: int, db) -> bool:
 
     ch_map = {uc.channel_id: uc.channel.username for uc in ucs}
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    sep = "―――――――――――――――"
-    lines = [f"📰 <b>Дайджест {date_str}</b> — {len(posts)} постов"]
+    lines = [f"📰 <b>Дайджест {date_str}</b> — {len(posts)} {_plural_posts(len(posts))}"]
     for i, post in enumerate(posts, 1):
         ch_name = ch_map.get(post.channel_id, "?")
         time_str = post.created_at.strftime("%H:%M") if post.created_at else ""
@@ -369,10 +469,10 @@ async def _build_and_send_digest(telegram_id: int, db) -> bool:
         if len(post.text or "") > 200:
             preview += "…"
         lines.append(
-            f"{sep}\n"
+            f"{SEP}\n"
             f"{i}. 📢 <b>@{ch_name}</b> <i>{time_str} UTC</i>\n"
             f"{preview}\n"
-            f"/summary {post.id}"
+            f"/summary_{post.id}"
         )
 
     await ptb_app.bot.send_message(
@@ -532,6 +632,7 @@ async def start_userbot() -> TelegramClient:
     loop.create_task(_poll_channels(client))
     loop.create_task(_digest_loop())
     loop.create_task(_batch_flush_loop(client))
+    loop.create_task(_pending_delivery_loop())
 
     _client = client
     db = get_session()

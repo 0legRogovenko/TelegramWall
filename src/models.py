@@ -155,6 +155,18 @@ class Bookmark(Base):
     post: Mapped["Post"] = relationship()
 
 
+class PendingPost(Base):
+    """Multi-post batches queued for scheduled delivery (survives restarts)."""
+    __tablename__ = "pending_posts"
+    __table_args__ = (UniqueConstraint("telegram_id", "post_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), nullable=False)
+    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 

@@ -9,6 +9,7 @@ BUTTON_CHANNELS = "📋 Мои каналы"
 BUTTON_ADD_CHANNEL = "➕ Добавить канал"
 BUTTON_SUMMARY = "📝 Саммари поста"
 BUTTON_DIGEST = "📰 Дайджест"
+BUTTON_SUBSCRIBE = "⭐ Тарифы и подписка"
 
 TIER_LABEL = {
     "basic":        "Basic ⭐",
@@ -24,18 +25,22 @@ TIER_ICON = {
     "free": "",
 }
 
-SEP = "──────────────────"
+SEP = "――――――――――――"
 
 
-def main_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [
+def main_menu(paid: bool = True) -> ReplyKeyboardMarkup:
+    """Reply keyboard. Free users see only channels + subscribe buttons."""
+    if paid:
+        rows = [
             [KeyboardButton(BUTTON_CHANNELS), KeyboardButton(BUTTON_ADD_CHANNEL)],
             [KeyboardButton(BUTTON_SUMMARY),  KeyboardButton(BUTTON_DIGEST)],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+        ]
+    else:
+        rows = [
+            [KeyboardButton(BUTTON_CHANNELS), KeyboardButton(BUTTON_ADD_CHANNEL)],
+            [KeyboardButton(BUTTON_SUBSCRIBE)],
+        ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
 
 
 def start_keyboard() -> InlineKeyboardMarkup:

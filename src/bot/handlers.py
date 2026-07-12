@@ -1,10 +1,11 @@
 """Bot command handlers."""
 import asyncio
 import html
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import BotCommand, BotCommandScopeChat, Update
 from telegram.ext import ContextTypes
 
 from src.bot.keyboards import (
@@ -26,6 +27,37 @@ from src.services.summarizer import summarize
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+_FREE_COMMANDS = [
+    BotCommand("start",       "Начало работы"),
+    BotCommand("channels",    "Мои каналы"),
+    BotCommand("add_channel", "Добавить канал"),
+    BotCommand("subscribe",   "Тарифы и подписка"),
+    BotCommand("help",        "Все команды"),
+]
+
+_BASIC_EXTRA = [
+    BotCommand("summary", "Саммари поста по ID"),
+    BotCommand("filter",  "Фильтр для канала"),
+]
+
+_PRO_EXTRA = [
+    BotCommand("digest", "AI-режим: дайджест и авто-саммари"),
+]
+
+
+async def _sync_menu_commands(bot, chat_id: int, user) -> None:
+    """Per-chat command menu: free users see only base commands."""
+    cmds = list(_FREE_COMMANDS)
+    if user.can_summary:
+        cmds = cmds[:3] + _BASIC_EXTRA + cmds[3:]
+    if user.can_auto_summary:
+        cmds = cmds[:5] + _PRO_EXTRA + cmds[5:]
+    try:
+        await bot.set_my_commands(cmds, scope=BotCommandScopeChat(chat_id))
+    except Exception:
+        pass  # menu sync is cosmetic — never break the main flow
+
 
 async def _guard_pro(query, user) -> bool:
     """Return True if user has Pro; send an alert and return False otherwise."""
@@ -79,7 +111,7 @@ def _help_text() -> str:
         "  <code>/filter @channel ai тема</code> — по смыслу <i>(Basic+)</i>\n\n"
 
         "<b>AI-саммари</b>\n"
-        "  <code>/summary ID</code> — краткий пересказ поста\n"
+        "  <code>/summary_ID</code> — краткий пересказ поста\n"
         "  <code>/digest</code> — авто-саммари и дайджест <i>(Pro)</i>\n\n"
 
         "<b>Закладки</b>\n"
@@ -150,9 +182,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"{SEP}\n"
                 "<code>/channels</code> — мои каналы\n"
                 "<code>/add_channel @username</code> — добавить\n"
-                "<code>/summary ID</code> — саммари поста"
+                "<code>/summary_ID</code> — саммари поста"
             )
-            await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_menu())
+            await update.message.reply_text(
+                text, parse_mode="HTML", reply_markup=main_menu(paid=True)
+            )
         else:
             text = (
                 f"👋 <b>Привет, {name}!</b>\n\n"
@@ -166,8 +200,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 text, parse_mode="HTML", reply_markup=start_keyboard(),
             )
             await update.message.reply_text(
-                "Кнопки управления внизу 👇", reply_markup=main_menu(),
+                "Кнопки управления внизу 👇", reply_markup=main_menu(paid=False),
             )
+        await _sync_menu_commands(context.bot, update.effective_chat.id, user)
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -274,8 +309,9 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "  📰 Дайджест и авто-саммари — <code>/digest</code>\n"
             "  📢 Неограниченно каналов",
             parse_mode="HTML",
-            reply_markup=main_menu(),
+            reply_markup=main_menu(paid=True),
         )
+        await _sync_menu_commands(context.bot, update.effective_chat.id, user)
 
 
 async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,7 +342,16 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    username = context.args[0].lstrip("@").lower()
+    raw = context.args[0]
+    if not raw.startswith("@"):
+        await update.message.reply_text(
+            "❌ <b>Канал указывается через @</b>\n\n"
+            "Пример: <code>/add_channel @durov</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    username = raw.lstrip("@").lower()
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
 
@@ -378,10 +423,19 @@ async def cmd_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         limit = user.channel_limit
         limit_str = "∞" if limit is None else str(limit)
         active = sum(1 for uc in ucs if uc.is_active)
+        filter_lines = "\n".join(
+            f"  /filter_@{uc.channel.username}" for uc in ucs
+        )
         await update.message.reply_text(
             f"📋 <b>Мои каналы</b>  <i>{active} / {limit_str}</i>\n\n"
-            "Нажмите — вкл/выкл  ·  🗑 — удалить\n"
-            "🔍 ключевые слова  ·  🤖 AI-фильтр",
+            "<b>Как управлять:</b>\n"
+            "  • Нажмите на канал в списке ниже — "
+            "включить ✅ / выключить ⏸ доставку постов\n"
+            "  • Нажмите 🗑 рядом с каналом — удалить его\n"
+            "  • 🔍 — стоит у каналов с фильтром слов\n"
+            "  • 🤖 — стоит у каналов с AI-фильтром\n\n"
+            "<b>Настроить фильтр канала:</b>\n"
+            f"{filter_lines}",
             parse_mode="HTML",
             reply_markup=user_channels_keyboard(ucs),
         )
@@ -465,8 +519,12 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await update.message.reply_text(
                 f"🔍 <b>Фильтры @{username}</b>\n\n{kw_line}\n{ai_line}\n\n"
                 f"{SEP}\n"
-                f"<code>/filter @{username} off</code> — убрать слова\n"
-                f"<code>/filter @{username} ai off</code> — убрать AI",
+                "<b>Настроить:</b>\n"
+                f"<code>/filter @{username} слово1 слово2</code> — фильтр слов\n"
+                f"<code>/filter @{username} ai тема</code> — AI-фильтр <i>(Basic+)</i>\n\n"
+                "<b>Убрать:</b>\n"
+                f"<code>/filter @{username} off</code> — слова\n"
+                f"<code>/filter @{username} ai off</code> — AI",
                 parse_mode="HTML",
             )
             return
@@ -893,7 +951,7 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"{SEP}\n"
                 f"📢 <b>@{ch_name}</b>  <i>{date_str}</i>\n"
                 f"{preview}\n"
-                f"<code>/summary {post.id}</code>  ·  <code>/unsave {post.id}</code>"
+                f"/summary_{post.id}  ·  <code>/unsave {post.id}</code>"
             )
         await update.message.reply_text("\n\n".join(lines), parse_mode="HTML")
 
@@ -961,6 +1019,26 @@ async def cmd_aifilter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await cmd_filter(update, context)
 
 
+# ── Clickable command links (/summary_21, /filter_@channel) ─────────────────
+
+async def cmd_summary_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /summary_<id> — clickable single-token form of /summary <id>."""
+    m = re.match(r"^/summary_(\d+)", update.message.text.strip())
+    if not m:
+        return
+    context.args = [m.group(1)]
+    await cmd_summary(update, context)
+
+
+async def cmd_filter_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /filter_@<channel> — shows the channel's filters and how to set them."""
+    m = re.match(r"^/filter_@?(\w+)", update.message.text.strip())
+    if not m:
+        return
+    context.args = [m.group(1)]
+    await cmd_filter(update, context)
+
+
 # ── Reply keyboard button handlers ───────────────────────────────────────────
 
 async def btn_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -970,7 +1048,7 @@ async def btn_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def btn_add_channel_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["awaiting_channel"] = True
     await update.message.reply_text(
-        "📢 Введите username канала:\n<i>Например: @durov или durov</i>",
+        "📢 Введите username канала через @:\n<i>Например: @durov</i>",
         parse_mode="HTML",
     )
 
@@ -999,8 +1077,15 @@ async def btn_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.strip()
     if context.user_data.get("awaiting_channel"):
+        if not text.startswith("@"):
+            await update.message.reply_text(
+                "❌ <b>Канал указывается через @</b>\n\n"
+                "Попробуйте ещё раз. Например: <code>@durov</code>",
+                parse_mode="HTML",
+            )
+            return  # keep awaiting_channel so the user can retry
         context.user_data["awaiting_channel"] = False
-        context.args = [text.lstrip("@")]
+        context.args = [text]
         await cmd_add_channel(update, context)
     elif context.user_data.get("awaiting_summary_id"):
         context.user_data["awaiting_summary_id"] = False
