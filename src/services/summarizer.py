@@ -145,11 +145,17 @@ def build_digest(sections: list[tuple[str, list[str]]], lang: str = "ru") -> str
     content = "\n\n".join(parts)[:MAX_DIGEST_INPUT_CHARS]
 
     client = _get_client()
+    # ~250 output tokens per channel block; hard cap keeps cost bounded
+    max_tokens = min(400 + 300 * len(sections), 3000)
     message = client.messages.create(
         model=config.CLAUDE_MODEL,
-        max_tokens=1000,  # long digests are split into several messages
+        max_tokens=max_tokens,
         thinking={"type": "disabled"},  # no reasoning tokens for digest writing
         system=DIGEST_SYSTEM.get(lang, DIGEST_SYSTEM["ru"]),
         messages=[{"role": "user", "content": content}],
     )
-    return _text_of(message)
+    text = _text_of(message)
+    if message.stop_reason == "max_tokens" and "\n\n" in text:
+        # cut mid-sentence — drop the incomplete trailing paragraph
+        text = text.rsplit("\n\n", 1)[0]
+    return text

@@ -77,7 +77,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         lang = lang_of(user)
         if tier != "free":
-            expires = user.active_subscription.expires_at.strftime("%d.%m.%Y")
+            sub = user.active_subscription
+            expires = sub.expires_at.strftime("%d.%m.%Y") if sub else "∞"
             await update.message.reply_text(
                 t("start_paid", lang, name=name, icon=TIER_ICON.get(tier, ""),
                   label=tier_label(tier, lang), expires=expires, sep=SEP),
@@ -101,7 +102,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lang = lang_of(user)
 
         if tier != "free":
-            expires = user.active_subscription.expires_at.strftime("%d.%m.%Y")
+            sub = user.active_subscription
+            expires = sub.expires_at.strftime("%d.%m.%Y") if sub else "∞"
             limit = user.channel_limit
             limit_str = "∞" if limit is None else str(limit)
 
