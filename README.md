@@ -1,10 +1,14 @@
 # TelegramWall
 
+[![CI](https://github.com/0legRogovenko/TelegramWall/actions/workflows/ci.yml/badge.svg)](https://github.com/0legRogovenko/TelegramWall/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Bot](https://img.shields.io/badge/Telegram-%40tgwallbot-2AABEE?logo=telegram&logoColor=white)](https://t.me/tgwallbot)
+
 Telegram-бот — агрегатор каналов: собирает новые посты из выбранных каналов и
 присылает их в один чат. Умеет AI-саммари, AI-дайджесты и AI-фильтры по теме.
 Интерфейс на трёх языках: 🇷🇺 русский, 🇬🇧 английский, 🇪🇸 испанский.
 
-Бот: [@tgwallbot](https://t.me/tgwallbot)
+Попробовать: [@tgwallbot](https://t.me/tgwallbot) — 3 канала бесплатно, карта не нужна.
 
 ## Возможности
 
@@ -82,3 +86,14 @@ venv/bin/python -m flake8 src tests main.py
 
 `/admin` (для `TELEGRAM_ADMIN_IDS`) — пользователи и языки, подписки и выручка,
 посты за 24ч/7д, очередь доставки, топ каналов. Админы получают Pro навсегда.
+
+## Автор и контакты
+
+**Олег Роговенко**
+
+- 📧 Email: [080806oleg@gmail.com](mailto:080806oleg@gmail.com)
+- 💬 Telegram: фидбек и вопросы — прямо в бота [@tgwallbot](https://t.me/tgwallbot)
+- 🐙 GitHub: [@0legRogovenko](https://github.com/0legRogovenko)
+
+Нашли баг или есть идея — пишите на почту или открывайте
+[issue](https://github.com/0legRogovenko/TelegramWall/issues).
