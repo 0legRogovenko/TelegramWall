@@ -57,6 +57,9 @@ class User(Base):
 
     @property
     def subscription_tier(self) -> str:
+        from src.config import config
+        if self.telegram_id in config.ADMIN_IDS:
+            return "pro"  # admins get Pro forever, free of charge
         sub = self.active_subscription
         return sub.tier if sub else "free"
 

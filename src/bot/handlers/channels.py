@@ -7,9 +7,22 @@ from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import _get_or_create_channel, _get_or_create_user
 from src.bot.i18n import lang_of, t, tier_label
-from src.bot.keyboards import SEP, subscribe_keyboard, user_channels_keyboard
+from src.bot.keyboards import subscribe_keyboard, user_channels_keyboard
 from src.database import db_session
 from src.models import Channel, UserChannel
+
+_LINK_RE = re.compile(r"^(?:https?://)?t(?:elegram)?\.me/(@?[A-Za-z0-9_]{3,})/?$", re.I)
+
+
+def _normalize_channel(raw: str) -> str | None:
+    """Accept '@name' or a t.me link; return the bare username or None."""
+    raw = raw.strip()
+    m = _LINK_RE.match(raw)
+    if m:
+        raw = "@" + m.group(1).lstrip("@")
+    if not raw.startswith("@"):
+        return None
+    return raw.lstrip("@").lower()
 
 
 async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -21,12 +34,10 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text(t("add_usage", lang), parse_mode="HTML")
             return
 
-        raw = context.args[0]
-        if not raw.startswith("@"):
+        username = _normalize_channel(context.args[0])
+        if not username:
             await update.message.reply_text(t("add_need_at", lang), parse_mode="HTML")
             return
-
-        username = raw.lstrip("@").lower()
 
         active_count = db.query(UserChannel).filter_by(user_id=user.id, is_active=True).count()
         limit = user.channel_limit
@@ -128,13 +139,11 @@ async def cmd_remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Unified filter: keyword and AI.
+    """AI relevance filter (Basic/Pro).
 
-    /filter @channel              — show current filters
-    /filter @channel word1 word2  — set keyword filter
-    /filter @channel ai topic     — set AI relevance filter (Basic/Pro)
-    /filter @channel off          — remove keyword filter
-    /filter @channel ai off       — remove AI filter
+    /filter @channel        — show the current filter
+    /filter @channel topic  — deliver only posts matching the topic
+    /filter @channel off    — remove the filter
     """
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
@@ -160,66 +169,41 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             )
             return
 
-        # Show current filters
+        # Legacy form "/filter @ch ai ..." — drop the "ai" word
+        if rest and rest[0].lower() == "ai":
+            rest = rest[1:]
+
+        # Show current filter
         if not rest:
-            kw = f"<code>{uc.keywords}</code>" if uc.keywords else "—"
             ai = f"<code>{uc.ai_filter}</code>" if uc.ai_filter else "—"
             await update.message.reply_text(
-                t("flt_show", lang, username=username, kw=kw, ai=ai, sep=SEP),
+                t("flt_show", lang, username=username, ai=ai),
                 parse_mode="HTML",
             )
             return
 
-        # AI filter branch
-        if rest[0].lower() == "ai":
-            if not user.can_summary:
-                await update.message.reply_text(
-                    t("flt_ai_pro", lang), parse_mode="HTML",
-                    reply_markup=subscribe_keyboard(lang),
-                )
-                return
-            ai_args = rest[1:]
-            if not ai_args:
-                if uc.ai_filter:
-                    await update.message.reply_text(
-                        t("flt_ai_current", lang, username=username, ai=uc.ai_filter),
-                        parse_mode="HTML",
-                    )
-                else:
-                    await update.message.reply_text(
-                        t("flt_ai_not_set", lang, username=username),
-                        parse_mode="HTML",
-                    )
-                return
-            if ai_args[0].lower() == "off":
-                uc.ai_filter = None
-                db.commit()
-                await update.message.reply_text(
-                    t("flt_ai_removed", lang, username=username), parse_mode="HTML"
-                )
-            else:
-                uc.ai_filter = " ".join(ai_args)
-                db.commit()
-                await update.message.reply_text(
-                    t("flt_ai_set", lang, username=username, ai=uc.ai_filter),
-                    parse_mode="HTML",
-                )
-            return
-
-        # Keyword filter branch
+        # Removing a filter never requires a subscription
         if rest[0].lower() == "off":
-            uc.keywords = None
+            uc.ai_filter = None
             db.commit()
             await update.message.reply_text(
-                t("flt_kw_removed", lang, username=username), parse_mode="HTML"
+                t("flt_ai_removed", lang, username=username), parse_mode="HTML"
             )
-        else:
-            uc.keywords = ", ".join(rest)
-            db.commit()
+            return
+
+        if not user.can_summary:
             await update.message.reply_text(
-                t("flt_kw_set", lang, username=username, kw=uc.keywords),
-                parse_mode="HTML",
+                t("flt_ai_pro", lang), parse_mode="HTML",
+                reply_markup=subscribe_keyboard(lang),
             )
+            return
+
+        uc.ai_filter = " ".join(rest)
+        db.commit()
+        await update.message.reply_text(
+            t("flt_ai_set", lang, username=username, ai=uc.ai_filter),
+            parse_mode="HTML",
+        )
 
 
 async def cmd_aifilter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

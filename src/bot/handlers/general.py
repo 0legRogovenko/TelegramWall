@@ -1,4 +1,4 @@
-"""General commands: /start, /language, /help, /status, /subscribe, /trial, /refer, /quiet."""
+"""General commands: /start, /language, /help, /status, /subscribe, /trial, /refer."""
 from datetime import datetime, timedelta, timezone
 
 from telegram import Update
@@ -111,15 +111,10 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             features += t(
                 "status_f_auto_ok" if user.can_auto_summary else "status_f_auto_pro", lang
             )
-            quiet = ""
-            if user.quiet_start is not None:
-                quiet = t("status_quiet", lang, sep=SEP,
-                          qs=user.quiet_start, qe=user.quiet_end)
-
             await update.message.reply_text(
                 t("status_paid", lang, icon=TIER_ICON.get(tier, ""),
                   label=tier_label(tier, lang), expires=expires, limit=limit_str,
-                  sep=SEP, features=features, quiet=quiet),
+                  sep=SEP, features=features),
                 parse_mode="HTML",
                 reply_markup=subscription_active_keyboard(tier, lang),
             )
@@ -188,51 +183,4 @@ async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             t("refer", lang, days=config.REFERRAL_BONUS_DAYS, link=link, sep=SEP),
             parse_mode="HTML",
-        )
-
-
-async def cmd_quiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    with db_session() as db:
-        user = _get_or_create_user(db, update.effective_user)
-        lang = lang_of(user)
-
-        if not context.args:
-            if user.quiet_start is not None:
-                await update.message.reply_text(
-                    t("quiet_active", lang, qs=user.quiet_start, qe=user.quiet_end),
-                    parse_mode="HTML",
-                )
-            else:
-                await update.message.reply_text(
-                    t("quiet_off_state", lang), parse_mode="HTML",
-                )
-            return
-
-        if context.args[0].lower() == "off":
-            user.quiet_start = None
-            user.quiet_end = None
-            db.commit()
-            await update.message.reply_text(
-                t("quiet_disabled", lang), parse_mode="HTML",
-            )
-            return
-
-        if len(context.args) < 2:
-            await update.message.reply_text(
-                t("quiet_two_hours", lang), parse_mode="HTML",
-            )
-            return
-
-        try:
-            qs, qe = int(context.args[0]), int(context.args[1])
-            if not (0 <= qs <= 23 and 0 <= qe <= 23):
-                raise ValueError
-        except ValueError:
-            await update.message.reply_text(t("quiet_bad_hours", lang))
-            return
-
-        user.quiet_start, user.quiet_end = qs, qe
-        db.commit()
-        await update.message.reply_text(
-            t("quiet_enabled", lang, qs=qs, qe=qe), parse_mode="HTML",
         )

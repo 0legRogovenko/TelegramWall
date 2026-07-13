@@ -32,7 +32,7 @@ class Config:
 
     # Anthropic (optional — /summary and AI filter won't work without it)
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
-    # Summaries: Sonnet 5 — intro pricing $2/$10 per MTok through 2026-08-31
+    # Summaries & digest — Haiku 4.5: cheapest capable model ($1/$5 per MTok)
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
     # AI relevance filter: cheap yes/no classification
     CLAUDE_FILTER_MODEL: str = os.getenv("CLAUDE_FILTER_MODEL", "claude-haiku-4-5")
@@ -68,7 +68,7 @@ class Config:
     CHANNEL_LIMIT_FREE: int = int(os.getenv("CHANNEL_LIMIT_FREE", "3"))
     CHANNEL_LIMIT_BASIC: int = int(os.getenv("CHANNEL_LIMIT_BASIC", "10"))
     TRIAL_DAYS: int = int(os.getenv("TRIAL_DAYS", "3"))
-    REFERRAL_BONUS_DAYS: int = int(os.getenv("REFERRAL_BONUS_DAYS", "7"))
+    REFERRAL_BONUS_DAYS: int = int(os.getenv("REFERRAL_BONUS_DAYS", "3"))
     DIGEST_HOUR_UTC: int = int(os.getenv("DIGEST_HOUR_UTC", "8"))
     # Hours (UTC) when queued multi-post batches are delivered.
     # Default "6,20" = 09:00 and 23:00 MSK.

@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 from src.bot.handlers.ai import cmd_digest, cmd_summary
 from src.bot.handlers.base import _get_or_create_user
-from src.bot.handlers.channels import cmd_add_channel, cmd_channels
+from src.bot.handlers.channels import _normalize_channel, cmd_add_channel, cmd_channels
 from src.bot.i18n import lang_of, t
 from src.bot.keyboards import subscribe_keyboard
 from src.database import db_session
@@ -40,10 +40,20 @@ async def btn_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await cmd_digest(update, context)
 
 
+async def btn_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from src.bot.handlers.stats import cmd_stats
+    await cmd_stats(update, context)
+
+
+async def btn_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from src.bot.handlers.general import cmd_refer
+    await cmd_refer(update, context)
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.strip()
     if context.user_data.get("awaiting_channel"):
-        if not text.startswith("@"):
+        if not _normalize_channel(text):
             with db_session() as db:
                 user = _get_or_create_user(db, update.effective_user)
                 lang = lang_of(user)

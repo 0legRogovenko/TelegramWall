@@ -16,6 +16,8 @@ def _free_commands(lang: str) -> list[BotCommand]:
         BotCommand("channels",    t("cmd_channels", lang)),
         BotCommand("add_channel", t("cmd_add", lang)),
         BotCommand("subscribe",   t("cmd_subscribe", lang)),
+        BotCommand("stats",       t("cmd_stats", lang)),
+        BotCommand("refer",       t("cmd_refer", lang)),
         BotCommand("language",    t("cmd_language", lang)),
         BotCommand("help",        t("cmd_help", lang)),
     ]

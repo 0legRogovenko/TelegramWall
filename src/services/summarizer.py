@@ -33,8 +33,10 @@ DIGEST_SYSTEM = {
         "Ты пишешь дайджест по постам из Telegram-каналов.\n"
         "Вход: блоки вида '@имя_канала:' и посты этого канала, каждый со строки '- '.\n"
         "Выход — только сам дайджест, на русском языке. Для каждого канала:\n"
-        "первая строка '📢 @имя_канала', затем связный пересказ его главных новостей, "
-        "2-4 предложения, только факты и цифры. Блоки разделяй пустой строкой.\n"
+        "первая строка '📢 @имя_канала', затем связный пересказ его главных новостей — "
+        "только факты и цифры. Если у канала несколько разных тем, раздели их "
+        "отдельными абзацами (пустая строка между абзацами). Блоки каналов тоже "
+        "разделяй пустой строкой.\n"
         "Никогда не комментируй входные данные и не задавай вопросов.\n"
         "Запрещено: вступление, заключение, оценки, разметка, эмодзи кроме 📢."
     ),
@@ -43,8 +45,10 @@ DIGEST_SYSTEM = {
         "Input: blocks of '@channel_name:' followed by that channel's posts, one per '- ' line.\n"
         "Output only the digest itself, ALWAYS in English — translate the source content "
         "if it is in another language. For each channel:\n"
-        "first line '📢 @channel_name', then a coherent recap of its main news, "
-        "2-4 sentences, facts and numbers only. Separate blocks with a blank line.\n"
+        "first line '📢 @channel_name', then a coherent recap of its main news — "
+        "facts and numbers only. If a channel covers several distinct topics, split "
+        "them into separate paragraphs (blank line between). Separate channel blocks "
+        "with a blank line too.\n"
         "Never comment on the input data and never ask questions.\n"
         "Forbidden: introduction, conclusion, opinions, markup, emoji except 📢."
     ),
@@ -54,7 +58,9 @@ DIGEST_SYSTEM = {
         "Salida: solo el boletín, SIEMPRE en español — traduce el contenido si está "
         "en otro idioma. Para cada canal:\n"
         "primera línea '📢 @nombre_del_canal', luego un repaso coherente de sus noticias "
-        "principales, 2-4 frases, solo hechos y cifras. Separa los bloques con línea en blanco.\n"
+        "principales — solo hechos y cifras. Si un canal cubre varios temas distintos, "
+        "sepáralos en párrafos (línea en blanco entre ellos). Separa también los bloques "
+        "de canales con línea en blanco.\n"
         "Nunca comentes los datos de entrada ni hagas preguntas.\n"
         "Prohibido: introducción, conclusión, opiniones, formato, emojis excepto 📢."
     ),
@@ -141,7 +147,7 @@ def build_digest(sections: list[tuple[str, list[str]]], lang: str = "ru") -> str
     client = _get_client()
     message = client.messages.create(
         model=config.CLAUDE_MODEL,
-        max_tokens=700,
+        max_tokens=1000,  # long digests are split into several messages
         thinking={"type": "disabled"},  # no reasoning tokens for digest writing
         system=DIGEST_SYSTEM.get(lang, DIGEST_SYSTEM["ru"]),
         messages=[{"role": "user", "content": content}],

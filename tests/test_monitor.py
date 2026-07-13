@@ -1,6 +1,4 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
-from unittest.mock import patch
-
 from src.userbot.monitor import _get_eligible_subscribers
 from tests.conftest import (
     create_channel,
@@ -30,71 +28,6 @@ class TestGetEligibleSubscribers:
         result = _get_eligible_subscribers(db, channel.id, "some text")
         tg_ids = [tg_id for tg_id, _ in result]
         assert 7002 not in tg_ids
-
-    def test_keyword_filter_passes_matching_text(self, db):
-        user = create_user(db, telegram_id=7003)
-        channel = create_channel(db, username="kw_chan_mon1")
-        subscribe_user_to_channel(db, user, channel, keywords="bitcoin")
-        result = _get_eligible_subscribers(db, channel.id, "Bitcoin surges 20% today")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7003 in tg_ids
-
-    def test_keyword_filter_blocks_non_matching_text(self, db):
-        user = create_user(db, telegram_id=7004)
-        channel = create_channel(db, username="kw_chan_mon2")
-        subscribe_user_to_channel(db, user, channel, keywords="bitcoin")
-        result = _get_eligible_subscribers(db, channel.id, "Latest football scores")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7004 not in tg_ids
-
-    def test_keyword_filter_case_insensitive(self, db):
-        user = create_user(db, telegram_id=7005)
-        channel = create_channel(db, username="kw_chan_mon3")
-        subscribe_user_to_channel(db, user, channel, keywords="Bitcoin")
-        # keyword is stored as "Bitcoin", lowercased by keyword_list → "bitcoin"
-        # text "bitcoin pump" should match
-        result = _get_eligible_subscribers(db, channel.id, "bitcoin pump coming")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7005 in tg_ids
-
-    def test_quiet_hours_excludes_user(self, db):
-        user = create_user(db, telegram_id=7006)
-        user.quiet_start = 0
-        user.quiet_end = 23
-        db.commit()
-        channel = create_channel(db, username="quiet_chan_mon")
-        subscribe_user_to_channel(db, user, channel)
-        with patch("src.userbot.monitor.datetime") as mock_dt:
-            mock_dt.now.return_value.hour = 12  # inside [0, 23)
-            result = _get_eligible_subscribers(db, channel.id, "some text")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7006 not in tg_ids
-
-    def test_quiet_hours_overnight_excludes_user_at_night(self, db):
-        user = create_user(db, telegram_id=7007)
-        user.quiet_start = 22
-        user.quiet_end = 8
-        db.commit()
-        channel = create_channel(db, username="quiet_chan_mon2")
-        subscribe_user_to_channel(db, user, channel)
-        with patch("src.userbot.monitor.datetime") as mock_dt:
-            mock_dt.now.return_value.hour = 2  # 02:00 is inside overnight [22, 8)
-            result = _get_eligible_subscribers(db, channel.id, "some text")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7007 not in tg_ids
-
-    def test_quiet_hours_does_not_block_user_outside_range(self, db):
-        user = create_user(db, telegram_id=7008)
-        user.quiet_start = 22
-        user.quiet_end = 8
-        db.commit()
-        channel = create_channel(db, username="quiet_chan_mon3")
-        subscribe_user_to_channel(db, user, channel)
-        with patch("src.userbot.monitor.datetime") as mock_dt:
-            mock_dt.now.return_value.hour = 12  # 12:00 is outside overnight range
-            result = _get_eligible_subscribers(db, channel.id, "some text")
-        tg_ids = [tg_id for tg_id, _ in result]
-        assert 7008 in tg_ids
 
     def test_ai_filter_value_returned_in_result(self, db):
         user = create_user(db, telegram_id=7009)

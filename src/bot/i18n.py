@@ -23,6 +23,8 @@ BUTTONS = {
     "summary":   {"ru": "📝 Саммари поста",      "en": "📝 Post summary",        "es": "📝 Resumen del post"},
     "digest":    {"ru": "📰 Дайджест",           "en": "📰 Digest",              "es": "📰 Boletín"},
     "subscribe": {"ru": "⭐ Тарифы и подписка",  "en": "⭐ Plans & subscription", "es": "⭐ Planes y suscripción"},
+    "stats":     {"ru": "📊 Статистика",         "en": "📊 Statistics",          "es": "📊 Estadísticas"},
+    "refer":     {"ru": "🎁 Пригласить друга",   "en": "🎁 Invite a friend",     "es": "🎁 Invitar a un amigo"},
 }
 
 
@@ -120,43 +122,40 @@ T = {
     # Help
     "help": {
         "ru": "📖 <b>TelegramWall — быстрый старт</b>\n\n"
-              "<b>Каналы</b>\n  <code>/add_channel @username</code> — добавить\n"
+              "<b>Каналы</b>\n  <code>/add_channel @username</code> — добавить (можно ссылкой t.me)\n"
               "  <code>/channels</code> — список и управление\n\n"
-              "<b>Фильтры</b>\n  <code>/filter @channel слово</code> — по ключевым словам\n"
-              "  <code>/filter @channel ai тема</code> — по смыслу <i>(Basic+)</i>\n\n"
+              "<b>AI-фильтр</b> <i>(Basic+)</i>\n  <code>/filter @channel тема</code> — присылать только посты по теме\n"
+              "  <code>/filter @channel off</code> — убрать\n\n"
               "<b>AI-саммари</b>\n  <code>/summary_ID</code> — краткий пересказ поста\n"
               "  <code>/digest</code> — дайджест и авто-саммари <i>(Pro)</i>\n\n"
-              "<b>Закладки</b>\n  <code>/save ID</code> — сохранить  ·  <code>/saved</code> — список\n\n"
-              "<b>Комфорт</b>\n  <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC\n"
-              "  <code>/stats</code> — статистика  ·  <code>/language</code> — язык\n\n{sep}\n"
+              "<b>Прочее</b>\n  <code>/stats</code> — статистика  ·  <code>/refer</code> — пригласить друга\n"
+              "  <code>/language</code> — язык\n\n{sep}\n"
               "<b>Тарифы</b>\n  Free — до {free_limit} каналов\n"
               "  ⭐ Basic — до {basic_limit} каналов + саммари\n    {basic_price} / мес\n"
               "  💎 Pro — ∞ каналов + авто-саммари + дайджест\n    {pro_price} / мес\n\n"
               "<code>/trial</code> — 3 дня Pro бесплатно\n<code>/refer</code> — пригласить → +{ref_days} дней",
         "en": "📖 <b>TelegramWall — quick start</b>\n\n"
-              "<b>Channels</b>\n  <code>/add_channel @username</code> — add\n"
+              "<b>Channels</b>\n  <code>/add_channel @username</code> — add (t.me links work too)\n"
               "  <code>/channels</code> — list & manage\n\n"
-              "<b>Filters</b>\n  <code>/filter @channel word</code> — by keywords\n"
-              "  <code>/filter @channel ai topic</code> — by meaning <i>(Basic+)</i>\n\n"
+              "<b>AI filter</b> <i>(Basic+)</i>\n  <code>/filter @channel topic</code> — deliver only on-topic posts\n"
+              "  <code>/filter @channel off</code> — remove\n\n"
               "<b>AI summaries</b>\n  <code>/summary_ID</code> — short post summary\n"
               "  <code>/digest</code> — digest & auto-summary <i>(Pro)</i>\n\n"
-              "<b>Bookmarks</b>\n  <code>/save ID</code> — save  ·  <code>/saved</code> — list\n\n"
-              "<b>Comfort</b>\n  <code>/quiet 23 9</code> — silence from 23:00 to 09:00 UTC\n"
-              "  <code>/stats</code> — statistics  ·  <code>/language</code> — language\n\n{sep}\n"
+              "<b>More</b>\n  <code>/stats</code> — statistics  ·  <code>/refer</code> — invite a friend\n"
+              "  <code>/language</code> — language\n\n{sep}\n"
               "<b>Plans</b>\n  Free — up to {free_limit} channels\n"
               "  ⭐ Basic — up to {basic_limit} channels + summaries\n    {basic_price} / mo\n"
               "  💎 Pro — ∞ channels + auto-summary + digest\n    {pro_price} / mo\n\n"
               "<code>/trial</code> — 3 days of Pro for free\n<code>/refer</code> — invite → +{ref_days} days",
         "es": "📖 <b>TelegramWall — inicio rápido</b>\n\n"
-              "<b>Canales</b>\n  <code>/add_channel @username</code> — añadir\n"
+              "<b>Canales</b>\n  <code>/add_channel @username</code> — añadir (enlaces t.me también)\n"
               "  <code>/channels</code> — lista y gestión\n\n"
-              "<b>Filtros</b>\n  <code>/filter @channel palabra</code> — por palabras clave\n"
-              "  <code>/filter @channel ai tema</code> — por significado <i>(Basic+)</i>\n\n"
+              "<b>Filtro AI</b> <i>(Basic+)</i>\n  <code>/filter @channel tema</code> — solo posts sobre el tema\n"
+              "  <code>/filter @channel off</code> — quitar\n\n"
               "<b>Resúmenes AI</b>\n  <code>/summary_ID</code> — resumen breve del post\n"
               "  <code>/digest</code> — boletín y auto-resumen <i>(Pro)</i>\n\n"
-              "<b>Marcadores</b>\n  <code>/save ID</code> — guardar  ·  <code>/saved</code> — lista\n\n"
-              "<b>Comodidad</b>\n  <code>/quiet 23 9</code> — silencio de 23:00 a 09:00 UTC\n"
-              "  <code>/stats</code> — estadísticas  ·  <code>/language</code> — idioma\n\n{sep}\n"
+              "<b>Más</b>\n  <code>/stats</code> — estadísticas  ·  <code>/refer</code> — invitar\n"
+              "  <code>/language</code> — idioma\n\n{sep}\n"
               "<b>Planes</b>\n  Free — hasta {free_limit} canales\n"
               "  ⭐ Basic — hasta {basic_limit} canales + resúmenes\n    {basic_price} / mes\n"
               "  💎 Pro — ∞ canales + auto-resumen + boletín\n    {pro_price} / mes\n\n"
@@ -166,20 +165,17 @@ T = {
     # /status
     "status_paid": {
         "ru": "📋 <b>Статус аккаунта</b>\n\n{icon} <b>{label}</b>\n  📅 Активна до <b>{expires}</b>\n"
-              "  📢 Каналов: до {limit}\n{sep}{features}{quiet}",
+              "  📢 Каналов: до {limit}\n{sep}{features}",
         "en": "📋 <b>Account status</b>\n\n{icon} <b>{label}</b>\n  📅 Active until <b>{expires}</b>\n"
-              "  📢 Channels: up to {limit}\n{sep}{features}{quiet}",
+              "  📢 Channels: up to {limit}\n{sep}{features}",
         "es": "📋 <b>Estado de la cuenta</b>\n\n{icon} <b>{label}</b>\n  📅 Activa hasta <b>{expires}</b>\n"
-              "  📢 Canales: hasta {limit}\n{sep}{features}{quiet}",
+              "  📢 Canales: hasta {limit}\n{sep}{features}",
     },
     "status_f_summary":  {"ru": "\n  📝 Саммари по запросу ✅", "en": "\n  📝 On-demand summaries ✅", "es": "\n  📝 Resúmenes bajo demanda ✅"},
     "status_f_auto_ok":  {"ru": "\n  🤖 Авто-саммари ✅\n  📰 Дайджест ✅", "en": "\n  🤖 Auto-summary ✅\n  📰 Digest ✅", "es": "\n  🤖 Auto-resumen ✅\n  📰 Boletín ✅"},
     "status_f_auto_pro": {"ru": "\n  🤖 Авто-саммари — <i>только Pro</i>\n  📰 Дайджест — <i>только Pro</i>",
                           "en": "\n  🤖 Auto-summary — <i>Pro only</i>\n  📰 Digest — <i>Pro only</i>",
                           "es": "\n  🤖 Auto-resumen — <i>solo Pro</i>\n  📰 Boletín — <i>solo Pro</i>"},
-    "status_quiet": {"ru": "\n{sep}\n  🔕 Тихий режим: {qs:02d}:00–{qe:02d}:00 UTC",
-                     "en": "\n{sep}\n  🔕 Quiet mode: {qs:02d}:00–{qe:02d}:00 UTC",
-                     "es": "\n{sep}\n  🔕 Modo silencio: {qs:02d}:00–{qe:02d}:00 UTC"},
     "status_free": {
         "ru": "📋 <b>Статус аккаунта</b>\n\n  Тариф: Free\n  📢 Каналов: <b>{count} / {limit}</b>\n"
               "  📝 Саммари: недоступно\n\n{sep}\n🎁 Попробуйте Pro бесплатно: <code>/trial</code>",
@@ -245,40 +241,6 @@ T = {
               "<b>+{days} días</b> de Basic.\n\n{sep}\nTu enlace:\n<code>{link}</code>",
     },
 
-    # /quiet
-    "quiet_active": {
-        "ru": "🔕 <b>Тихий режим активен</b>\n\n  С {qs:02d}:00 до {qe:02d}:00 UTC\n\n<code>/quiet off</code> — выключить",
-        "en": "🔕 <b>Quiet mode is on</b>\n\n  From {qs:02d}:00 to {qe:02d}:00 UTC\n\n<code>/quiet off</code> — turn off",
-        "es": "🔕 <b>Modo silencio activado</b>\n\n  De {qs:02d}:00 a {qe:02d}:00 UTC\n\n<code>/quiet off</code> — desactivar",
-    },
-    "quiet_off_state": {
-        "ru": "🔔 <b>Тихий режим выключен</b>\n\nВключить: <code>/quiet ЧЧ ЧЧ</code>\n"
-              "Пример: <code>/quiet 23 9</code> — тишина с 23:00 до 09:00 UTC",
-        "en": "🔔 <b>Quiet mode is off</b>\n\nTurn on: <code>/quiet HH HH</code>\n"
-              "Example: <code>/quiet 23 9</code> — silence from 23:00 to 09:00 UTC",
-        "es": "🔔 <b>Modo silencio desactivado</b>\n\nActivar: <code>/quiet HH HH</code>\n"
-              "Ejemplo: <code>/quiet 23 9</code> — silencio de 23:00 a 09:00 UTC",
-    },
-    "quiet_disabled": {
-        "ru": "🔔 <b>Тихий режим выключен</b>\n\nПосты приходят в любое время.",
-        "en": "🔔 <b>Quiet mode turned off</b>\n\nPosts arrive at any time.",
-        "es": "🔔 <b>Modo silencio desactivado</b>\n\nLos posts llegan a cualquier hora.",
-    },
-    "quiet_two_hours": {
-        "ru": "Укажите два часа: <code>/quiet ЧЧ ЧЧ</code>\nПример: <code>/quiet 23 9</code>",
-        "en": "Provide two hours: <code>/quiet HH HH</code>\nExample: <code>/quiet 23 9</code>",
-        "es": "Indica dos horas: <code>/quiet HH HH</code>\nEjemplo: <code>/quiet 23 9</code>",
-    },
-    "quiet_bad_hours": {
-        "ru": "❌ Часы должны быть числами от 0 до 23.",
-        "en": "❌ Hours must be numbers from 0 to 23.",
-        "es": "❌ Las horas deben ser números de 0 a 23.",
-    },
-    "quiet_enabled": {
-        "ru": "🔕 <b>Тихий режим включён</b>\n\n  С {qs:02d}:00 до {qe:02d}:00 UTC\n\n<code>/quiet off</code> — выключить",
-        "en": "🔕 <b>Quiet mode turned on</b>\n\n  From {qs:02d}:00 to {qe:02d}:00 UTC\n\n<code>/quiet off</code> — turn off",
-        "es": "🔕 <b>Modo silencio activado</b>\n\n  De {qs:02d}:00 a {qe:02d}:00 UTC\n\n<code>/quiet off</code> — desactivar",
-    },
 
     # Channels
     "add_usage": {
@@ -325,17 +287,17 @@ T = {
         "ru": "📋 <b>Мои каналы</b>  <i>{active} / {limit}</i>\n\n<b>Как управлять:</b>\n"
               "  • Нажмите на канал в списке ниже — включить ✅ / выключить ⏸ доставку постов\n"
               "  • Нажмите 🗑 рядом с каналом — удалить его\n"
-              "  • 🔍 — стоит у каналов с фильтром слов\n  • 🤖 — стоит у каналов с AI-фильтром\n\n"
+              "  • 🤖 — стоит у каналов с AI-фильтром\n\n"
               "<b>Настроить фильтр канала:</b>\n{filters}",
         "en": "📋 <b>My channels</b>  <i>{active} / {limit}</i>\n\n<b>How to manage:</b>\n"
               "  • Tap a channel below — enable ✅ / pause ⏸ post delivery\n"
               "  • Tap 🗑 next to a channel — remove it\n"
-              "  • 🔍 — channel has a keyword filter\n  • 🤖 — channel has an AI filter\n\n"
+              "  • 🤖 — channel has an AI filter\n\n"
               "<b>Set up a channel filter:</b>\n{filters}",
         "es": "📋 <b>Mis canales</b>  <i>{active} / {limit}</i>\n\n<b>Cómo gestionar:</b>\n"
               "  • Toca un canal abajo — activar ✅ / pausar ⏸ la entrega\n"
               "  • Toca 🗑 junto a un canal — eliminarlo\n"
-              "  • 🔍 — canal con filtro de palabras\n  • 🤖 — canal con filtro AI\n\n"
+              "  • 🤖 — canal con filtro AI\n\n"
               "<b>Configurar filtro de canal:</b>\n{filters}",
     },
     "rm_usage": {
@@ -366,21 +328,21 @@ T = {
 
     # Filters
     "flt_help": {
-        "ru": "🔍 <b>Фильтр постов</b>\n\n<b>Ключевые слова</b> — пропускать только нужные:\n"
-              "  <code>/filter @channel слово1 слово2</code>\n  <code>/filter @channel off</code> — убрать\n\n"
-              "<b>AI по теме</b> <i>(Basic / Pro)</i> — фильтр по смыслу:\n"
-              "  <code>/filter @channel ai только про экономику</code>\n"
-              "  <code>/filter @channel ai off</code> — убрать\n\nПосмотреть: <code>/filter @channel</code>",
-        "en": "🔍 <b>Post filter</b>\n\n<b>Keywords</b> — deliver only matching posts:\n"
-              "  <code>/filter @channel word1 word2</code>\n  <code>/filter @channel off</code> — remove\n\n"
-              "<b>AI by topic</b> <i>(Basic / Pro)</i> — filter by meaning:\n"
-              "  <code>/filter @channel ai only about economics</code>\n"
-              "  <code>/filter @channel ai off</code> — remove\n\nView: <code>/filter @channel</code>",
-        "es": "🔍 <b>Filtro de posts</b>\n\n<b>Palabras clave</b> — entregar solo los que coincidan:\n"
-              "  <code>/filter @channel palabra1 palabra2</code>\n  <code>/filter @channel off</code> — quitar\n\n"
-              "<b>AI por tema</b> <i>(Basic / Pro)</i> — filtro por significado:\n"
-              "  <code>/filter @channel ai solo economía</code>\n"
-              "  <code>/filter @channel ai off</code> — quitar\n\nVer: <code>/filter @channel</code>",
+        "ru": "🤖 <b>AI-фильтр постов</b> <i>(Basic / Pro)</i>\n\n"
+              "Бот пропустит только посты, подходящие под тему:\n"
+              "  <code>/filter @channel только про экономику</code>\n"
+              "  <code>/filter @channel off</code> — убрать фильтр\n\n"
+              "Посмотреть: <code>/filter @channel</code>",
+        "en": "🤖 <b>AI post filter</b> <i>(Basic / Pro)</i>\n\n"
+              "The bot will deliver only posts matching the topic:\n"
+              "  <code>/filter @channel only about economics</code>\n"
+              "  <code>/filter @channel off</code> — remove the filter\n\n"
+              "View: <code>/filter @channel</code>",
+        "es": "🤖 <b>Filtro AI de posts</b> <i>(Basic / Pro)</i>\n\n"
+              "El bot entregará solo posts que coincidan con el tema:\n"
+              "  <code>/filter @channel solo economía</code>\n"
+              "  <code>/filter @channel off</code> — quitar el filtro\n\n"
+              "Ver: <code>/filter @channel</code>",
     },
     "flt_ch_not_found": {
         "ru": "❌ Канал <b>@{username}</b> не найден. Сначала добавьте его.",
@@ -388,42 +350,20 @@ T = {
         "es": "❌ Canal <b>@{username}</b> no encontrado. Añádelo primero.",
     },
     "flt_show": {
-        "ru": "🔍 <b>Фильтры @{username}</b>\n\n  📝 Слова: {kw}\n  🤖 AI: {ai}\n\n{sep}\n"
-              "<b>Настроить:</b>\n<code>/filter @{username} слово1 слово2</code> — фильтр слов\n"
-              "<code>/filter @{username} ai тема</code> — AI-фильтр <i>(Basic+)</i>\n\n"
-              "<b>Убрать:</b>\n<code>/filter @{username} off</code> — слова\n"
-              "<code>/filter @{username} ai off</code> — AI",
-        "en": "🔍 <b>Filters for @{username}</b>\n\n  📝 Words: {kw}\n  🤖 AI: {ai}\n\n{sep}\n"
-              "<b>Set:</b>\n<code>/filter @{username} word1 word2</code> — keyword filter\n"
-              "<code>/filter @{username} ai topic</code> — AI filter <i>(Basic+)</i>\n\n"
-              "<b>Remove:</b>\n<code>/filter @{username} off</code> — keywords\n"
-              "<code>/filter @{username} ai off</code> — AI",
-        "es": "🔍 <b>Filtros de @{username}</b>\n\n  📝 Palabras: {kw}\n  🤖 AI: {ai}\n\n{sep}\n"
-              "<b>Configurar:</b>\n<code>/filter @{username} palabra1 palabra2</code> — filtro de palabras\n"
-              "<code>/filter @{username} ai tema</code> — filtro AI <i>(Basic+)</i>\n\n"
-              "<b>Quitar:</b>\n<code>/filter @{username} off</code> — palabras\n"
-              "<code>/filter @{username} ai off</code> — AI",
+        "ru": "🤖 <b>AI-фильтр @{username}</b>\n\n  Тема: {ai}\n\n"
+              "<code>/filter @{username} тема</code> — задать\n"
+              "<code>/filter @{username} off</code> — убрать",
+        "en": "🤖 <b>AI filter for @{username}</b>\n\n  Topic: {ai}\n\n"
+              "<code>/filter @{username} topic</code> — set\n"
+              "<code>/filter @{username} off</code> — remove",
+        "es": "🤖 <b>Filtro AI de @{username}</b>\n\n  Tema: {ai}\n\n"
+              "<code>/filter @{username} tema</code> — configurar\n"
+              "<code>/filter @{username} off</code> — quitar",
     },
     "flt_ai_pro": {
         "ru": "🤖 <b>AI-фильтр</b>\n\nДоступен на тарифах Basic ⭐ и Pro 💎.",
         "en": "🤖 <b>AI filter</b>\n\nAvailable on Basic ⭐ and Pro 💎 plans.",
         "es": "🤖 <b>Filtro AI</b>\n\nDisponible en los planes Basic ⭐ y Pro 💎.",
-    },
-    "flt_ai_current": {
-        "ru": "🤖 <b>AI-фильтр @{username}</b>\n\n  <code>{ai}</code>\n\n"
-              "<code>/filter @{username} ai off</code> — удалить",
-        "en": "🤖 <b>AI filter for @{username}</b>\n\n  <code>{ai}</code>\n\n"
-              "<code>/filter @{username} ai off</code> — remove",
-        "es": "🤖 <b>Filtro AI de @{username}</b>\n\n  <code>{ai}</code>\n\n"
-              "<code>/filter @{username} ai off</code> — quitar",
-    },
-    "flt_ai_not_set": {
-        "ru": "🤖 AI-фильтр для <b>@{username}</b> не задан.\n\n"
-              "Пример: <code>/filter @{username} ai только про экономику</code>",
-        "en": "🤖 No AI filter set for <b>@{username}</b>.\n\n"
-              "Example: <code>/filter @{username} ai only about economics</code>",
-        "es": "🤖 No hay filtro AI para <b>@{username}</b>.\n\n"
-              "Ejemplo: <code>/filter @{username} ai solo economía</code>",
     },
     "flt_ai_removed": {
         "ru": "✅ AI-фильтр <b>@{username}</b> удалён.",
@@ -434,19 +374,6 @@ T = {
         "ru": "✅ <b>AI-фильтр установлен</b>\n\n  @{username} → <code>{ai}</code>",
         "en": "✅ <b>AI filter set</b>\n\n  @{username} → <code>{ai}</code>",
         "es": "✅ <b>Filtro AI configurado</b>\n\n  @{username} → <code>{ai}</code>",
-    },
-    "flt_kw_removed": {
-        "ru": "✅ Фильтр слов <b>@{username}</b> удалён.",
-        "en": "✅ Keyword filter for <b>@{username}</b> removed.",
-        "es": "✅ Filtro de palabras de <b>@{username}</b> eliminado.",
-    },
-    "flt_kw_set": {
-        "ru": "✅ <b>Фильтр установлен</b>\n\n  @{username} → <code>{kw}</code>\n\n"
-              "Приходят только посты с этими словами.",
-        "en": "✅ <b>Filter set</b>\n\n  @{username} → <code>{kw}</code>\n\n"
-              "Only posts containing these words will arrive.",
-        "es": "✅ <b>Filtro configurado</b>\n\n  @{username} → <code>{kw}</code>\n\n"
-              "Solo llegarán posts con estas palabras.",
     },
 
     # Summary
@@ -520,25 +447,7 @@ T = {
         "es": "❌ Solo para Pro 💎",
     },
 
-    # Bookmarks & stats
-    "save_usage":  {"ru": "📌 Использование: <code>/save &lt;ID поста&gt;</code>", "en": "📌 Usage: <code>/save &lt;post ID&gt;</code>", "es": "📌 Uso: <code>/save &lt;ID del post&gt;</code>"},
-    "save_bad_id": {"ru": "❌ ID должен быть числом.", "en": "❌ ID must be a number.", "es": "❌ El ID debe ser un número."},
-    "save_already": {"ru": "ℹ️ Пост <b>#{id}</b> уже в закладках.", "en": "ℹ️ Post <b>#{id}</b> is already bookmarked.", "es": "ℹ️ El post <b>#{id}</b> ya está guardado."},
-    "save_done": {
-        "ru": "📌 <b>Пост #{id} сохранён</b>\n\nПосмотреть все: <code>/saved</code>",
-        "en": "📌 <b>Post #{id} saved</b>\n\nView all: <code>/saved</code>",
-        "es": "📌 <b>Post #{id} guardado</b>\n\nVer todos: <code>/saved</code>",
-    },
-    "unsave_usage": {"ru": "Использование: <code>/unsave &lt;ID поста&gt;</code>", "en": "Usage: <code>/unsave &lt;post ID&gt;</code>", "es": "Uso: <code>/unsave &lt;ID del post&gt;</code>"},
-    "unsave_not_in": {"ru": "ℹ️ Пост <b>#{id}</b> не в закладках.", "en": "ℹ️ Post <b>#{id}</b> is not bookmarked.", "es": "ℹ️ El post <b>#{id}</b> no está guardado."},
-    "unsave_done": {"ru": "🗑 Пост <b>#{id}</b> удалён из закладок.", "en": "🗑 Post <b>#{id}</b> removed from bookmarks.", "es": "🗑 Post <b>#{id}</b> eliminado de guardados."},
-    "saved_empty": {
-        "ru": "📌 <b>Закладки пусты</b>\n\nСохраняйте посты командой <code>/save ID</code>",
-        "en": "📌 <b>No bookmarks</b>\n\nSave posts with <code>/save ID</code>",
-        "es": "📌 <b>Sin marcadores</b>\n\nGuarda posts con <code>/save ID</code>",
-    },
-    "saved_header": {"ru": "📌 <b>Закладки</b> — {n} {p}", "en": "📌 <b>Bookmarks</b> — {n} {p}", "es": "📌 <b>Marcadores</b> — {n} {p}"},
-    "media_stub":  {"ru": "<i>[медиа]</i>", "en": "<i>[media]</i>", "es": "<i>[multimedia]</i>"},
+    # Stats
     "stats_empty": {
         "ru": "📊 <b>Статистика</b>\n\nКаналы ещё не добавлены.\n\n<code>/add_channel @username</code> — начать",
         "en": "📊 <b>Statistics</b>\n\nNo channels added yet.\n\n<code>/add_channel @username</code> — start",
@@ -546,11 +455,11 @@ T = {
     },
     "stats_body": {
         "ru": "📊 <b>Ваша статистика</b>\n\n  📢 Каналов: <b>{channels}</b>\n  📝 Постов всего: <b>{total}</b>\n"
-              "  📅 За 7 дней: <b>{week}</b>\n  📌 Закладок: <b>{bookmarks}</b>",
+              "  📅 За 7 дней: <b>{week}</b>",
         "en": "📊 <b>Your statistics</b>\n\n  📢 Channels: <b>{channels}</b>\n  📝 Posts total: <b>{total}</b>\n"
-              "  📅 Last 7 days: <b>{week}</b>\n  📌 Bookmarks: <b>{bookmarks}</b>",
+              "  📅 Last 7 days: <b>{week}</b>",
         "es": "📊 <b>Tus estadísticas</b>\n\n  📢 Canales: <b>{channels}</b>\n  📝 Posts en total: <b>{total}</b>\n"
-              "  📅 Últimos 7 días: <b>{week}</b>\n  📌 Marcadores: <b>{bookmarks}</b>",
+              "  📅 Últimos 7 días: <b>{week}</b>",
     },
     "stats_top": {"ru": "<b>Топ каналов за неделю:</b>", "en": "<b>Top channels this week:</b>", "es": "<b>Canales top de la semana:</b>"},
 
@@ -585,6 +494,8 @@ T = {
         "es": "📝 <b>{label}</b>\n\n{text}\n\n🔗 <a href=\"{url}\">Leer el original</a>  ·  #{id}",
     },
 
+    "btn_summary": {"ru": "📝 Саммари", "en": "📝 Summary", "es": "📝 Resumen"},
+
     # Command menu descriptions
     "cmd_start":     {"ru": "Начало работы", "en": "Get started", "es": "Empezar"},
     "cmd_channels":  {"ru": "Мои каналы", "en": "My channels", "es": "Mis canales"},
@@ -595,4 +506,6 @@ T = {
     "cmd_summary":   {"ru": "Саммари поста по ID", "en": "Post summary by ID", "es": "Resumen por ID"},
     "cmd_filter":    {"ru": "Фильтр для канала", "en": "Channel filter", "es": "Filtro de canal"},
     "cmd_digest":    {"ru": "AI-режим: дайджест и авто-саммари", "en": "AI mode: digest & auto-summary", "es": "Modo AI: boletín y auto-resumen"},
+    "cmd_stats":     {"ru": "Статистика", "en": "Statistics", "es": "Estadísticas"},
+    "cmd_refer":     {"ru": "Пригласить друга", "en": "Invite a friend", "es": "Invitar a un amigo"},
 }

@@ -39,6 +39,8 @@ async def _async_main(loop: asyncio.AbstractEventLoop) -> None:
         BotCommand("channels",    "Мои каналы / My channels"),
         BotCommand("add_channel", "Добавить канал / Add channel"),
         BotCommand("subscribe",   "Тарифы и подписка / Plans"),
+        BotCommand("stats",       "Статистика / Statistics"),
+        BotCommand("refer",       "Пригласить друга / Invite"),
         BotCommand("language",    "Язык / Language / Idioma"),
         BotCommand("help",        "Все команды / All commands"),
     ])

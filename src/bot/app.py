@@ -19,6 +19,8 @@ from src.bot.handlers import (
     btn_add_channel_prompt,
     btn_channels,
     btn_digest,
+    btn_refer,
+    btn_stats,
     btn_summary_prompt,
     callback_handler,
     cmd_add_channel,
@@ -31,11 +33,8 @@ from src.bot.handlers import (
     cmd_filter_link,
     cmd_help,
     cmd_language,
-    cmd_quiet,
     cmd_refer,
     cmd_remove_channel,
-    cmd_save,
-    cmd_saved,
     cmd_start,
     cmd_stats,
     cmd_status,
@@ -43,7 +42,6 @@ from src.bot.handlers import (
     cmd_summary,
     cmd_summary_link,
     cmd_trial,
-    cmd_unsave,
     handle_text,
 )
 from src.bot.i18n import btn_variants
@@ -84,15 +82,11 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("autosummary", cmd_autosummary))
     app.add_handler(CommandHandler("digest", cmd_digest))
-    app.add_handler(CommandHandler("quiet", cmd_quiet))
     app.add_handler(CommandHandler("filter", cmd_filter))
     app.add_handler(CommandHandler("channels", cmd_channels))
     app.add_handler(CommandHandler("add_channel", cmd_add_channel))
     app.add_handler(CommandHandler("remove_channel", cmd_remove_channel))
     app.add_handler(CommandHandler("admin", cmd_admin))
-    app.add_handler(CommandHandler("save", cmd_save))
-    app.add_handler(CommandHandler("unsave", cmd_unsave))
-    app.add_handler(CommandHandler("saved", cmd_saved))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("aifilter", cmd_aifilter))
     app.add_handler(CallbackQueryHandler(callback_handler))
@@ -107,6 +101,8 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(MessageHandler(filters.Text(btn_variants("summary")), btn_summary_prompt))
     app.add_handler(MessageHandler(filters.Text(btn_variants("digest")), btn_digest))
     app.add_handler(MessageHandler(filters.Text(btn_variants("subscribe")), cmd_subscribe))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("stats")), btn_stats))
+    app.add_handler(MessageHandler(filters.Text(btn_variants("refer")), btn_refer))
     # Plain text — catches post ID after summary button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 

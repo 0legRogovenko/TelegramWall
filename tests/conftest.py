@@ -54,9 +54,10 @@ def patch_db_session(db, monkeypatch):
         "src.bot.handlers.channels.db_session",
         "src.bot.handlers.ai.db_session",
         "src.bot.handlers.admin.db_session",
-        "src.bot.handlers.bookmarks.db_session",
+        "src.bot.handlers.stats.db_session",
         "src.bot.handlers.callbacks.db_session",
         "src.bot.handlers.buttons.db_session",
+        "src.bot.handlers.admin.db_session",
     ]
     for target in targets:
         monkeypatch.setattr(target, _test_db_session)

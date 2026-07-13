@@ -18,7 +18,7 @@ from src.bot.keyboards import (
 )
 from src.bot.payments import send_invoice
 from src.database import db_session
-from src.models import UserChannel
+from src.models import Post, UserChannel
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -151,6 +151,39 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             await query.message.delete()
         else:
             await query.message.edit_text(t("digest_empty", lang), parse_mode="HTML")
+
+    elif data.startswith("sum:"):
+        # Inline "Summary" button under a delivered post
+        post_id = int(data.split(":")[1])
+        import asyncio
+        from src.services.summarizer import summarize
+        with db_session() as db:
+            user = _get_or_create_user(db, update.effective_user)
+            lang = lang_of(user)
+            if not user.can_summary:
+                await query.answer(t("pro_only_alert", lang), show_alert=True)
+                return
+            post = db.query(Post).filter_by(id=post_id).first()
+            if not post or not post.text:
+                await query.answer(t("sum_no_text", lang), show_alert=True)
+                return
+            if post.summary:
+                await query.message.reply_text(
+                    t("sum_header", lang, id=post_id, text=post.summary),
+                    parse_mode="HTML",
+                )
+                return
+            msg = await query.message.reply_text(t("sum_generating", lang))
+            try:
+                summary_text = await asyncio.to_thread(summarize, post.text, lang)
+                post.summary = summary_text
+                db.commit()
+                await msg.edit_text(
+                    t("sum_header", lang, id=post_id, text=summary_text),
+                    parse_mode="HTML",
+                )
+            except Exception as exc:
+                await msg.edit_text(t("sum_error", lang, err=exc), parse_mode="HTML")
 
     elif data.startswith("toggle_uc:"):
         uc_id = int(data.split(":")[1])

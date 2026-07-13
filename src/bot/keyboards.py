@@ -29,10 +29,12 @@ def main_menu(paid: bool = True, lang: str = "ru") -> ReplyKeyboardMarkup:
         rows = [
             [KeyboardButton(btn("channels", lang)), KeyboardButton(btn("add", lang))],
             [KeyboardButton(btn("summary", lang)), KeyboardButton(btn("digest", lang))],
+            [KeyboardButton(btn("stats", lang)), KeyboardButton(btn("refer", lang))],
         ]
     else:
         rows = [
             [KeyboardButton(btn("channels", lang)), KeyboardButton(btn("add", lang))],
+            [KeyboardButton(btn("stats", lang)), KeyboardButton(btn("refer", lang))],
             [KeyboardButton(btn("subscribe", lang))],
         ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
@@ -117,13 +119,18 @@ def digest_channels_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
+def summary_button(post_id: int, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Inline "Summary" button attached to every delivered post."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(t("btn_summary", lang), callback_data=f"sum:{post_id}")  # noqa: E231
+    ]])
+
+
 def user_channels_keyboard(user_channels: list) -> InlineKeyboardMarkup:
     rows = []
     for uc in user_channels:
         status = "✅" if uc.is_active else "⏸"
         label = f"{status} @{uc.channel.username}"
-        if uc.keywords:
-            label += " 🔍"
         if uc.ai_filter:
             label += " 🤖"
         rows.append([

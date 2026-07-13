@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import joinedload
 from telethon import TelegramClient, events
-from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.types import (
     Message,
     MessageMediaDocument,
@@ -16,7 +15,7 @@ from telethon.tl.types import (
 )
 
 from src.bot.i18n import count_new_posts, lang_of, t
-from src.bot.keyboards import SEP
+from src.bot.keyboards import SEP, summary_button
 from src.config import config
 from src.database import get_session
 from src.models import Channel, PendingPost, Post, User, UserChannel
@@ -77,14 +76,11 @@ def _batch_allowed_channel_ids(db, limited_users: list[tuple[int, int]]) -> dict
 def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int, str | None]]:
     """Return (telegram_id, ai_filter) for subscribers who pass all delivery checks.
 
-    Checks applied (in order):
-    1. Quiet hours
-    2. Keyword filter
-    3. Channel-limit enforcement — if the user's tier allows fewer channels
+    Checks applied:
+    1. Channel-limit enforcement — if the user's tier allows fewer channels
        than they currently have, only the earliest-added ones are delivered.
        The UserChannel record is NOT modified (soft enforcement).
     """
-    now_hour = datetime.now(timezone.utc).hour
     ucs = (
         db.query(UserChannel)
         .filter_by(channel_id=channel_id, is_active=True)
@@ -102,20 +98,6 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
     result = []
     for uc in ucs:
         user = uc.user
-
-        # Quiet hours
-        if user.quiet_start is not None and user.quiet_end is not None:
-            qs, qe = user.quiet_start, user.quiet_end
-            in_quiet = (qs <= now_hour < qe) if qs <= qe else (now_hour >= qs or now_hour < qe)
-            if in_quiet:
-                logger.debug("Skipping user %s (quiet hours)", user.telegram_id)
-                continue
-
-        # Keyword filter
-        kws = uc.keyword_list
-        if kws and not any(kw in (text or "").lower() for kw in kws):
-            logger.debug("Skipping user %s (keyword filter)", user.telegram_id)
-            continue
 
         # Channel limit enforcement (soft): skip if channel is outside allowed set
         if user.channel_limit is not None:
@@ -210,15 +192,17 @@ async def _deliver_to_user(
 
     # Auto-summary mode: send only the summary + a link to the original post,
     # never the full post. Falls through to normal delivery if AI fails.
+    lang = "ru"
     db = get_session()
     try:
         user = db.query(User).filter_by(telegram_id=tg_id).first()
+        lang = lang_of(user) if user else "ru"
         if (
             user and user.auto_summary and user.can_auto_summary
             and text and len(text.strip()) >= 50
         ):
             sent = await _send_summary(
-                client, tg_id, post_id, text, channel_label, db, lang_of(user),
+                client, tg_id, post_id, text, channel_label, db, lang,
                 username=username, msg_id=msg.id,
             )
             if sent:
@@ -226,9 +210,31 @@ async def _deliver_to_user(
     finally:
         db.close()
 
-    forwarded = False
+    # Text posts: our own message — channel name as a hyperlink to the
+    # original post + an inline "Summary" button.
+    if text:
+        if username:
+            url = f"https://t.me/{username}/{msg.id}"
+        else:
+            url = f"https://t.me/c/{msg.peer_id.channel_id}/{msg.id}"
+        time_str = msg.date.strftime("%d.%m  %H:%M") if msg.date else ""
+        header = f'📢 <b><a href="{url}">{html.escape(channel_label)}</a></b>'
+        if time_str:
+            header += f" <i>· {time_str} UTC</i>"
+        try:
+            await ptb_app.bot.send_message(
+                chat_id=tg_id,
+                text=f"{header}\n\n{html.escape(text)}\n\n<i>#{post_id}</i>",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=summary_button(post_id, lang),
+            )
+            logger.info("✅ Sent post #%s to user %s", post_id, tg_id)
+        except Exception as exc:
+            logger.warning("Cannot deliver post #%s to user %s: %s", post_id, tg_id, exc)
+        return
 
-    # Try forward via Bot API (works if bot is member of the channel)
+    # Media-only posts: forward the original (buttons can't ride on forwards)
     from_chat_id = int(f"-100{msg.peer_id.channel_id}")
     try:
         await ptb_app.bot.forward_message(
@@ -236,34 +242,11 @@ async def _deliver_to_user(
             from_chat_id=from_chat_id,
             message_id=msg.id,
         )
-        logger.info("✅ Forwarded post #%s to user %s", post_id, tg_id)
-        forwarded = True
+        logger.info("✅ Forwarded media post #%s to user %s", post_id, tg_id)
     except Exception as exc:
-        logger.info("Bot API forward failed (%s) — falling back to text", exc)
-
-    # Fallback: send text via Bot API (always delivers to the bot chat)
-    if not forwarded:
-        if text:
-            try:
-                time_str = msg.date.strftime("%d.%m  %H:%M") if msg.date else ""
-                header = f"📢 <b>{html.escape(channel_label)}</b>"
-                if time_str:
-                    header += f" <i>· {time_str} UTC</i>"
-                await ptb_app.bot.send_message(
-                    chat_id=tg_id,
-                    text=f"{header}\n\n{html.escape(text)}\n\n<i>#{post_id}</i>",
-                    parse_mode="HTML",
-                )
-                logger.info("✅ Sent text post #%s to user %s", post_id, tg_id)
-                forwarded = True
-            except Exception as exc:
-                logger.warning("Cannot deliver post #%s to user %s: %s", post_id, tg_id, exc)
-                return
-        else:
-            logger.warning(
-                "Post #%s has no text and could not be forwarded to user %s", post_id, tg_id
-            )
-            return
+        logger.warning(
+            "Media post #%s could not be forwarded to user %s: %s", post_id, tg_id, exc
+        )
 
 
 async def _send_summary(
@@ -471,6 +454,33 @@ async def _pending_delivery_loop() -> None:
             logger.warning("Scheduled batch delivery failed: %s", exc)
 
 
+MAX_MESSAGE_CHARS = 3900  # Telegram limit is 4096; keep headroom for tags
+
+
+def _split_message(text: str) -> list[str]:
+    """Split a long message into Telegram-sized chunks on paragraph boundaries."""
+    if len(text) <= MAX_MESSAGE_CHARS:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for para in text.split("\n\n"):
+        while len(para) > MAX_MESSAGE_CHARS:  # a single oversized paragraph
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(para[:MAX_MESSAGE_CHARS])
+            para = para[MAX_MESSAGE_CHARS:]
+        candidate = f"{current}\n\n{para}" if current else para
+        if len(candidate) > MAX_MESSAGE_CHARS:
+            chunks.append(current)
+            current = para
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def _digest_html(ai_text: str) -> str:
     """Escape AI output for HTML parse_mode and bold the source headers."""
     lines = []
@@ -528,13 +538,14 @@ async def _build_and_send_digest(
     ai_text = await asyncio.to_thread(build_digest, sections, lang)
 
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
-    header = t("digest_header", lang, date=date_str)
-    await ptb_app.bot.send_message(
-        chat_id=telegram_id,
-        text=f"{header}\n\n{_digest_html(ai_text)}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    full = t("digest_header", lang, date=date_str) + "\n\n" + _digest_html(ai_text)
+    for chunk in _split_message(full):
+        await ptb_app.bot.send_message(
+            chat_id=telegram_id,
+            text=chunk,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
     return True
 
 
@@ -656,11 +667,6 @@ async def _resolve_channels(client: TelegramClient) -> None:
             except Exception as exc:
                 logger.warning("Cannot resolve @%s: %s", ch.username, exc)
                 continue
-            try:
-                await client(JoinChannelRequest(entity))
-                logger.info("Joined @%s", ch.username)
-            except Exception as exc:
-                logger.warning("Join @%s failed: %s — polling will cover it", ch.username, exc)
         db.commit()
     finally:
         db.close()
