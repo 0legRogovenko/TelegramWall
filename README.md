@@ -91,8 +91,8 @@ venv/bin/python -m flake8 src tests main.py
 
 **Олег Роговенко**
 
+- 💬 Telegram: [@bapestask8](https://t.me/bapestask8)
 - 📧 Email: [080806oleg@gmail.com](mailto:080806oleg@gmail.com)
-- 💬 Telegram: фидбек и вопросы — прямо в бота [@tgwallbot](https://t.me/tgwallbot)
 - 🐙 GitHub: [@0legRogovenko](https://github.com/0legRogovenko)
 
 Нашли баг или есть идея — пишите на почту или открывайте
