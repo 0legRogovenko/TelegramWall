@@ -539,6 +539,8 @@ async def _build_and_send_digest(
 
     date_str = datetime.now(timezone.utc).strftime("%d.%m.%Y")
     full = t("digest_header", lang, date=date_str) + "\n\n" + _digest_html(ai_text)
+    if ptb_app.bot.username:  # viral share signature
+        full += "\n\n" + t("digest_footer", lang, bot=ptb_app.bot.username)
     for chunk in _split_message(full):
         await ptb_app.bot.send_message(
             chat_id=telegram_id,

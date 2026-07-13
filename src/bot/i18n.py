@@ -231,14 +231,21 @@ T = {
 
     # /refer
     "refer": {
-        "ru": "🔗 <b>Реферальная программа</b>\n\nЗа каждого нового пользователя по вашей ссылке — "
-              "<b>+{days} дн.</b> Basic.\n\n{sep}\nВаша ссылка:\n<code>{link}</code>",
-        "en": "🔗 <b>Referral program</b>\n\nFor every new user who joins via your link — "
-              "<b>+{days} days</b> of Basic.\n\n{sep}\nYour link:\n<code>{link}</code>",
-        "es": "🔗 <b>Programa de referidos</b>\n\nPor cada nuevo usuario que llegue con tu enlace — "
-              "<b>+{days} días</b> de Basic.\n\n{sep}\nTu enlace:\n<code>{link}</code>",
+        "ru": "🔗 <b>Реферальная программа</b>\n\nЗа каждого друга по вашей ссылке — "
+              "<b>+{days} дн. Basic вам</b> и <b>+{days} дн. другу</b>.\n\n{sep}\n"
+              "Ваша ссылка (нажмите, чтобы скопировать):\n<code>{link}</code>",
+        "en": "🔗 <b>Referral program</b>\n\nFor every friend who joins via your link — "
+              "<b>+{days} days of Basic for you</b> and <b>+{days} days for them</b>.\n\n{sep}\n"
+              "Your link (tap to copy):\n<code>{link}</code>",
+        "es": "🔗 <b>Programa de referidos</b>\n\nPor cada amigo que llegue con tu enlace — "
+              "<b>+{days} días de Basic para ti</b> y <b>+{days} días para él</b>.\n\n{sep}\n"
+              "Tu enlace (toca para copiar):\n<code>{link}</code>",
     },
-
+    "ref_welcome_bonus": {
+        "ru": "🎁 <b>+{days} дн. Basic</b> — подарок за переход по приглашению!",
+        "en": "🎁 <b>+{days} days of Basic</b> — a welcome gift for joining via an invite!",
+        "es": "🎁 <b>+{days} días de Basic</b> — ¡regalo de bienvenida por la invitación!",
+    },
 
     # Channels
     "add_usage": {
@@ -448,6 +455,11 @@ T = {
         "ru": "📰 <b>Нет новых постов</b>\n\nЗа последние 24 часа по выбранным каналам ничего не поступало.",
         "en": "📰 <b>No new posts</b>\n\nNothing arrived from the selected channels in the last 24 hours.",
         "es": "📰 <b>Sin posts nuevos</b>\n\nNo llegó nada de los canales seleccionados en las últimas 24 horas.",
+    },
+    "digest_footer": {
+        "ru": "<i>📰 Сделано в @{bot} — AI-дайджесты ваших каналов</i>",
+        "en": "<i>📰 Made with @{bot} — AI digests of your channels</i>",
+        "es": "<i>📰 Hecho con @{bot} — boletines AI de tus canales</i>",
     },
     "digest_header": {
         "ru": "📰 <b>Дайджест {date}</b>",

@@ -41,9 +41,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
         name = update.effective_user.first_name
-        tier = user.subscription_tier
 
-        # Handle referral link (?start=ref_XXXX)
+        # Handle referral link (?start=ref_XXXX) — bonus for BOTH sides
         if context.args and context.args[0].startswith("ref_") and not user.referred_by:
             ref_code = context.args[0][4:]
             referrer = db.query(User).filter_by(referral_code=ref_code).first()
@@ -56,7 +55,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     user_id=referrer.id, tier="basic",
                     stars_paid=0, expires_at=bonus_expires,
                 ))
+                db.add(Subscription(
+                    user_id=user.id, tier="basic",
+                    stars_paid=0, expires_at=bonus_expires,
+                ))
                 db.commit()
+                await update.message.reply_text(
+                    t("ref_welcome_bonus", lang_of(user),
+                      days=config.REFERRAL_BONUS_DAYS),
+                    parse_mode="HTML",
+                )
                 try:
                     from src.bot.app import ptb_app
                     await ptb_app.bot.send_message(
@@ -67,6 +75,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
                 except Exception:
                     pass
+
+        tier = user.subscription_tier
 
         # First contact: ask for the language before anything else
         if not user.language:

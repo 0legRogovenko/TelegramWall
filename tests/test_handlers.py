@@ -48,6 +48,30 @@ class TestCmdStart:
         assert update.message.reply_text.called
 
 
+# ── Referral ─────────────────────────────────────────────────────────────────
+
+class TestReferral:
+    async def test_ref_link_grants_bonus_to_both_sides(self, db):
+        referrer = create_user(db, telegram_id=1501, referral_code="abc123")
+        update = make_update(user_id=1502)
+        await cmd_start(update, make_context(args=["ref_abc123"]))
+
+        new_user = db.query(User).filter_by(telegram_id=1502).first()
+        assert new_user.referred_by == referrer.id
+        for uid in (referrer.id, new_user.id):
+            sub = db.query(Subscription).filter_by(user_id=uid, stars_paid=0).first()
+            assert sub is not None and sub.tier == "basic"
+
+    async def test_ref_link_not_claimable_twice(self, db):
+        create_user(db, telegram_id=1503, referral_code="xyz789")
+        update = make_update(user_id=1504)
+        await cmd_start(update, make_context(args=["ref_xyz789"]))
+        await cmd_start(update, make_context(args=["ref_xyz789"]))
+        new_user = db.query(User).filter_by(telegram_id=1504).first()
+        subs = db.query(Subscription).filter_by(user_id=new_user.id).count()
+        assert subs == 1
+
+
 # ── /trial ────────────────────────────────────────────────────────────────────
 
 class TestCmdTrial:
