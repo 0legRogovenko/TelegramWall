@@ -19,8 +19,6 @@ from src.bot.handlers import (
     btn_add_channel_prompt,
     btn_channels,
     btn_digest,
-    btn_refer,
-    btn_stats,
     btn_summary_prompt,
     callback_handler,
     cmd_add_channel,
@@ -101,8 +99,6 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(MessageHandler(filters.Text(btn_variants("summary")), btn_summary_prompt))
     app.add_handler(MessageHandler(filters.Text(btn_variants("digest")), btn_digest))
     app.add_handler(MessageHandler(filters.Text(btn_variants("subscribe")), cmd_subscribe))
-    app.add_handler(MessageHandler(filters.Text(btn_variants("stats")), btn_stats))
-    app.add_handler(MessageHandler(filters.Text(btn_variants("refer")), btn_refer))
     # Plain text — catches post ID after summary button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 

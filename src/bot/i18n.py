@@ -23,8 +23,6 @@ BUTTONS = {
     "summary":   {"ru": "📝 Саммари поста",      "en": "📝 Post summary",        "es": "📝 Resumen del post"},
     "digest":    {"ru": "📰 Дайджест",           "en": "📰 Digest",              "es": "📰 Boletín"},
     "subscribe": {"ru": "⭐ Тарифы и подписка",  "en": "⭐ Plans & subscription", "es": "⭐ Planes y suscripción"},
-    "stats":     {"ru": "📊 Статистика",         "en": "📊 Statistics",          "es": "📊 Estadísticas"},
-    "refer":     {"ru": "🎁 Пригласить друга",   "en": "🎁 Invite a friend",     "es": "🎁 Invitar a un amigo"},
 }
 
 
@@ -133,7 +131,7 @@ T = {
               "<b>Тарифы</b>\n  Free — до {free_limit} каналов\n"
               "  ⭐ Basic — до {basic_limit} каналов + саммари\n    {basic_price} / мес\n"
               "  💎 Pro — ∞ каналов + авто-саммари + дайджест\n    {pro_price} / мес\n\n"
-              "<code>/trial</code> — 3 дня Pro бесплатно\n<code>/refer</code> — пригласить → +{ref_days} дней",
+              "<code>/trial</code> — 3 дня Pro бесплатно\n<code>/refer</code> — пригласить → +{ref_days} дн.",
         "en": "📖 <b>TelegramWall — quick start</b>\n\n"
               "<b>Channels</b>\n  <code>/add_channel @username</code> — add (t.me links work too)\n"
               "  <code>/channels</code> — list & manage\n\n"
@@ -226,7 +224,7 @@ T = {
     },
 
     "ref_bonus": {
-        "ru": "🎁 <b>+{days} дней Basic!</b>\n\nПо вашей реферальной ссылке зарегистрировался новый пользователь.",
+        "ru": "🎁 <b>+{days} дн. Basic!</b>\n\nПо вашей реферальной ссылке зарегистрировался новый пользователь.",
         "en": "🎁 <b>+{days} days of Basic!</b>\n\nA new user joined via your referral link.",
         "es": "🎁 <b>¡+{days} días de Basic!</b>\n\nUn nuevo usuario se registró con tu enlace de referido.",
     },
@@ -234,7 +232,7 @@ T = {
     # /refer
     "refer": {
         "ru": "🔗 <b>Реферальная программа</b>\n\nЗа каждого нового пользователя по вашей ссылке — "
-              "<b>+{days} дней</b> Basic.\n\n{sep}\nВаша ссылка:\n<code>{link}</code>",
+              "<b>+{days} дн.</b> Basic.\n\n{sep}\nВаша ссылка:\n<code>{link}</code>",
         "en": "🔗 <b>Referral program</b>\n\nFor every new user who joins via your link — "
               "<b>+{days} days</b> of Basic.\n\n{sep}\nYour link:\n<code>{link}</code>",
         "es": "🔗 <b>Programa de referidos</b>\n\nPor cada nuevo usuario que llegue con tu enlace — "
@@ -244,14 +242,20 @@ T = {
 
     # Channels
     "add_usage": {
-        "ru": "📢 <b>Добавление канала</b>\n\nПример: <code>/add_channel @durov</code>",
-        "en": "📢 <b>Add a channel</b>\n\nExample: <code>/add_channel @durov</code>",
-        "es": "📢 <b>Añadir un canal</b>\n\nEjemplo: <code>/add_channel @durov</code>",
+        "ru": "📢 <b>Добавление канала</b>\n\n<code>/add_channel @durov</code>\n"
+              "или ссылкой: <code>/add_channel https://t.me/durov</code>",
+        "en": "📢 <b>Add a channel</b>\n\n<code>/add_channel @durov</code>\n"
+              "or by link: <code>/add_channel https://t.me/durov</code>",
+        "es": "📢 <b>Añadir un canal</b>\n\n<code>/add_channel @durov</code>\n"
+              "o por enlace: <code>/add_channel https://t.me/durov</code>",
     },
     "add_need_at": {
-        "ru": "❌ <b>Канал указывается через @</b>\n\nПример: <code>/add_channel @durov</code>",
-        "en": "❌ <b>Channel must start with @</b>\n\nExample: <code>/add_channel @durov</code>",
-        "es": "❌ <b>El canal debe empezar con @</b>\n\nEjemplo: <code>/add_channel @durov</code>",
+        "ru": "❌ <b>Не похоже на канал</b>\n\nУкажите @username или ссылку t.me:\n"
+              "<code>/add_channel @durov</code>\n<code>/add_channel https://t.me/durov</code>",
+        "en": "❌ <b>That doesn't look like a channel</b>\n\nUse @username or a t.me link:\n"
+              "<code>/add_channel @durov</code>\n<code>/add_channel https://t.me/durov</code>",
+        "es": "❌ <b>Eso no parece un canal</b>\n\nUsa @username o un enlace t.me:\n"
+              "<code>/add_channel @durov</code>\n<code>/add_channel https://t.me/durov</code>",
     },
     "add_limit": {
         "ru": "❌ <b>Лимит каналов</b>\n\n  {label} — до <b>{limit}</b> каналов.\n\n{upgrade}",
@@ -383,9 +387,15 @@ T = {
         "es": "📝 <b>Resúmenes no disponibles</b>\n\nDisponible en los planes Basic ⭐ y Pro 💎.",
     },
     "sum_usage": {
-        "ru": "📝 Использование: <code>/summary &lt;ID поста&gt;</code>\n\nID указан под каждым постом.",
-        "en": "📝 Usage: <code>/summary &lt;post ID&gt;</code>\n\nThe ID is shown under every post.",
-        "es": "📝 Uso: <code>/summary &lt;ID del post&gt;</code>\n\nEl ID aparece bajo cada post.",
+        "ru": "📝 Использование: <code>/summary &lt;ID поста&gt;</code>\n\n"
+              "ID указан под каждым постом (#123), либо просто нажмите кнопку "
+              "«📝 Саммари» под постом.",
+        "en": "📝 Usage: <code>/summary &lt;post ID&gt;</code>\n\n"
+              "The ID is shown under every post (#123), or just tap the "
+              "“📝 Summary” button under a post.",
+        "es": "📝 Uso: <code>/summary &lt;ID del post&gt;</code>\n\n"
+              "El ID aparece bajo cada post (#123), o simplemente pulsa el botón "
+              "«📝 Resumen» bajo el post.",
     },
     "sum_bad_id":    {"ru": "❌ ID поста должен быть числом.", "en": "❌ Post ID must be a number.", "es": "❌ El ID debe ser un número."},
     "sum_not_found": {"ru": "❌ Пост <b>#{id}</b> не найден.", "en": "❌ Post <b>#{id}</b> not found.", "es": "❌ Post <b>#{id}</b> no encontrado."},
@@ -401,11 +411,14 @@ T = {
         "es": "📰 <b>Modo AI no disponible</b>\n\nAuto-resumen y boletín están disponibles en el plan Pro 💎.",
     },
     "digest_settings": {
-        "ru": "📰 <b>AI-режим</b>\n\n  <b>Авто-саммари</b> — краткое изложение с каждым постом\n"
+        "ru": "📰 <b>AI-режим</b>\n\n  <b>Авто-саммари</b> — вместо полного поста приходит краткое "
+              "AI-саммари со ссылкой на оригинал\n"
               "  <b>Дайджест</b> — AI-сводка за день в {hour:02d}:00 UTC\n\nНастройте кнопками ниже:",
-        "en": "📰 <b>AI mode</b>\n\n  <b>Auto-summary</b> — a short summary with every post\n"
+        "en": "📰 <b>AI mode</b>\n\n  <b>Auto-summary</b> — instead of the full post you get a short "
+              "AI summary with a link to the original\n"
               "  <b>Digest</b> — daily AI overview at {hour:02d}:00 UTC\n\nConfigure below:",
-        "es": "📰 <b>Modo AI</b>\n\n  <b>Auto-resumen</b> — resumen breve con cada post\n"
+        "es": "📰 <b>Modo AI</b>\n\n  <b>Auto-resumen</b> — en lugar del post completo recibes un "
+              "resumen AI con enlace al original\n"
               "  <b>Boletín</b> — resumen AI diario a las {hour:02d}:00 UTC\n\nConfigura abajo:",
     },
     "kb_digest_on":  {"ru": "✅ Дайджест каждый день: ВКЛ", "en": "✅ Daily digest: ON", "es": "✅ Boletín diario: SÍ"},
@@ -465,14 +478,17 @@ T = {
 
     # Button prompts (reply keyboard flows)
     "prompt_channel": {
-        "ru": "📢 Введите username канала через @:\n<i>Например: @durov</i>",
-        "en": "📢 Enter the channel username with @:\n<i>For example: @durov</i>",
-        "es": "📢 Escribe el usuario del canal con @:\n<i>Por ejemplo: @durov</i>",
+        "ru": "📢 Пришлите @username канала или ссылку:\n<i>Например: @durov или https://t.me/durov</i>",
+        "en": "📢 Send the channel @username or a link:\n<i>For example: @durov or https://t.me/durov</i>",
+        "es": "📢 Envía el @username del canal o un enlace:\n<i>Por ejemplo: @durov o https://t.me/durov</i>",
     },
     "prompt_channel_retry": {
-        "ru": "❌ <b>Канал указывается через @</b>\n\nПопробуйте ещё раз. Например: <code>@durov</code>",
-        "en": "❌ <b>The channel must start with @</b>\n\nTry again. For example: <code>@durov</code>",
-        "es": "❌ <b>El canal debe empezar con @</b>\n\nInténtalo de nuevo. Por ejemplo: <code>@durov</code>",
+        "ru": "❌ <b>Не похоже на канал</b>\n\nПопробуйте ещё раз: <code>@durov</code> "
+              "или <code>https://t.me/durov</code>",
+        "en": "❌ <b>That doesn't look like a channel</b>\n\nTry again: <code>@durov</code> "
+              "or <code>https://t.me/durov</code>",
+        "es": "❌ <b>Eso no parece un canal</b>\n\nInténtalo de nuevo: <code>@durov</code> "
+              "o <code>https://t.me/durov</code>",
     },
     "prompt_sum_id": {
         "ru": "📝 Введите ID поста:\n<i>ID указан под каждым сообщением от бота.</i>",

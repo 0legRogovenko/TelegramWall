@@ -40,16 +40,6 @@ async def btn_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await cmd_digest(update, context)
 
 
-async def btn_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from src.bot.handlers.stats import cmd_stats
-    await cmd_stats(update, context)
-
-
-async def btn_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from src.bot.handlers.general import cmd_refer
-    await cmd_refer(update, context)
-
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.strip()
     if context.user_data.get("awaiting_channel"):

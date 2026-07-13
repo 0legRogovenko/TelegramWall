@@ -29,12 +29,10 @@ def main_menu(paid: bool = True, lang: str = "ru") -> ReplyKeyboardMarkup:
         rows = [
             [KeyboardButton(btn("channels", lang)), KeyboardButton(btn("add", lang))],
             [KeyboardButton(btn("summary", lang)), KeyboardButton(btn("digest", lang))],
-            [KeyboardButton(btn("stats", lang)), KeyboardButton(btn("refer", lang))],
         ]
     else:
         rows = [
             [KeyboardButton(btn("channels", lang)), KeyboardButton(btn("add", lang))],
-            [KeyboardButton(btn("stats", lang)), KeyboardButton(btn("refer", lang))],
             [KeyboardButton(btn("subscribe", lang))],
         ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, is_persistent=True)
