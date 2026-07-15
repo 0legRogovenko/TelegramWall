@@ -1,6 +1,7 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
 from src.userbot.monitor import _get_eligible_subscribers
 from tests.conftest import (
+    create_post,
     create_channel,
     create_user,
     subscribe_user_to_channel,
@@ -164,3 +165,58 @@ class TestChannelLimitEnforcement:
         result = _get_eligible_subscribers(db, extra_channel.id, "news")
         assert any(tg_id == 7105 for tg_id, _ in result), \
             "After Pro re-subscription, over-limit channel should deliver"
+
+
+class TestCleanup:
+    def test_old_posts_purged_recent_kept(self, db):
+        from datetime import datetime, timedelta, timezone
+
+        from src.config import config
+        from src.models import Post
+        from src.userbot.monitor import _cleanup_old_posts
+
+        user = create_user(db, telegram_id=9101)
+        channel = create_channel(db, username="cleanchan9101")
+        subscribe_user_to_channel(db, user, channel)
+        old = create_post(db, channel, text="old", msg_id=1)
+        old.created_at = datetime.now(timezone.utc) - timedelta(
+            days=config.POST_RETENTION_DAYS + 1
+        )
+        create_post(db, channel, text="fresh", msg_id=2)
+        db.commit()
+
+        deleted = _cleanup_old_posts(db)
+
+        assert deleted == 1
+        remaining = [p.text for p in db.query(Post).filter_by(channel_id=channel.id).all()]
+        assert remaining == ["fresh"]
+
+    def test_cleanup_noop_when_nothing_old(self, db):
+        from src.userbot.monitor import _cleanup_old_posts
+
+        channel = create_channel(db, username="cleanchan9102")
+        create_post(db, channel, text="fresh", msg_id=1)
+        db.commit()
+        assert _cleanup_old_posts(db) == 0
+
+    def test_cleanup_keeps_undelivered_pending_posts(self, db):
+        from datetime import datetime, timedelta, timezone
+
+        from src.config import config
+        from src.models import Post, PendingPost
+        from src.userbot.monitor import _cleanup_old_posts
+
+        channel = create_channel(db, username="cleanchan9103")
+        old = create_post(db, channel, text="old-but-undelivered", msg_id=1)
+        old.created_at = datetime.now(timezone.utc) - timedelta(
+            days=config.POST_RETENTION_DAYS + 5
+        )
+        # This old post is still queued for delivery — must survive cleanup
+        db.add(PendingPost(telegram_id=555, channel_id=channel.id, post_id=old.id))
+        db.commit()
+
+        deleted = _cleanup_old_posts(db)
+
+        assert deleted == 0
+        assert db.query(Post).filter_by(id=old.id).first() is not None
+        assert db.query(PendingPost).filter_by(post_id=old.id).first() is not None

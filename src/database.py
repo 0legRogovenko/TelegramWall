@@ -52,6 +52,15 @@ def init_db() -> None:
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referral_code VARCHAR(32)")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referred_by INTEGER")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN language VARCHAR(5)")
+        # channels — polling cursor
+        _run_migration(
+            conn, "ALTER TABLE channels ADD COLUMN last_message_id BIGINT DEFAULT 0"
+        )
+        _run_migration(conn, """
+            UPDATE channels SET last_message_id = COALESCE(
+                (SELECT MAX(message_id) FROM posts WHERE posts.channel_id = channels.id), 0
+            ) WHERE COALESCE(last_message_id, 0) = 0
+        """)
         # user_channels
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN keywords TEXT")
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN ai_filter TEXT")

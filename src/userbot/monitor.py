@@ -138,6 +138,9 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
         db.add(post)
         db.flush()
         post_id = post.id
+        ch_row = db.query(Channel).filter_by(id=channel.id).first()
+        if ch_row and (ch_row.last_message_id or 0) < msg.id:
+            ch_row.last_message_id = msg.id
         db.commit()
         db.close()
 
@@ -316,7 +319,11 @@ def _format_batch_message(
 
 
 def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
-    """Persist a multi-post batch for scheduled delivery (survives restarts)."""
+    """Persist a buffered batch so a deploy restart can't lose it.
+
+    Only used by the SIGTERM handler; the rows are delivered right after
+    the next startup by _flush_pending().
+    """
     db = get_session()
     try:
         for p in posts:
@@ -328,13 +335,37 @@ def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
                     telegram_id=tg_id, channel_id=channel_id, post_id=p["post_id"]
                 ))
         db.commit()
-        logger.info("Queued %d post(s) for user %s (delivery at %s UTC)",
-                    len(posts), tg_id, config.BATCH_HOURS_UTC)
+        logger.info("Persisted %d buffered post(s) for user %s until restart",
+                    len(posts), tg_id)
     except Exception as exc:
         logger.warning("Cannot queue pending posts for user %s: %s", tg_id, exc)
         db.rollback()
     finally:
         db.close()
+
+
+async def _send_batch_now(tg_id: int, entry: dict) -> None:
+    """Deliver a multi-post burst as one combined summary message."""
+    from src.bot.app import ptb_app
+    if ptb_app is None:
+        return
+    db = get_session()
+    try:
+        lang = _user_lang(db, tg_id)
+    finally:
+        db.close()
+    text = _format_batch_message(
+        entry["label"], entry["username"],
+        [{"post_id": p["post_id"], "text": p["text"]} for p in entry["posts"]],
+        lang,
+    )
+    for chunk in _split_message(text):
+        await ptb_app.bot.send_message(
+            chat_id=tg_id, text=chunk, parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    logger.info("✅ Burst (%d posts) from %s → user %s",
+                len(entry["posts"]), entry["label"], tg_id)
 
 
 def flush_buffer_on_shutdown() -> None:
@@ -352,7 +383,7 @@ def flush_buffer_on_shutdown() -> None:
 
 
 async def _batch_flush_loop(client: TelegramClient) -> None:
-    """Every 30s: single posts → deliver now; multi-post dumps → queue for 9/23."""
+    """Every 30s: single posts → deliver as a post; bursts → one summary now."""
     while True:
         await asyncio.sleep(30)
         now = time.monotonic()
@@ -365,8 +396,8 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
             if not entry:
                 continue
             tg_id, channel_id = key
+            posts = entry["posts"]
             try:
-                posts = entry["posts"]
                 if len(posts) == 1:
                     p = posts[0]
                     await _deliver_to_user(
@@ -374,9 +405,12 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
                         username=entry.get("username"),
                     )
                 else:
-                    _queue_pending(tg_id, channel_id, posts)
+                    await _send_batch_now(tg_id, entry)
             except Exception as exc:
-                logger.warning("Batch flush error for user %s: %s", tg_id, exc)
+                # Transient send failure — persist so the next startup retries,
+                # instead of silently dropping the burst.
+                logger.warning("Batch flush error for user %s: %s — re-queued", tg_id, exc)
+                _queue_pending(tg_id, channel_id, posts)
 
 
 async def _flush_pending() -> None:
@@ -400,15 +434,27 @@ async def _flush_pending() -> None:
             groups.setdefault((r.telegram_id, r.channel_id), []).append(r.post_id)
 
         for (tg_id, channel_id), post_ids in groups.items():
+            def _drop_rows():
+                db.query(PendingPost).filter(
+                    PendingPost.telegram_id == tg_id,
+                    PendingPost.channel_id == channel_id,
+                    PendingPost.post_id.in_(post_ids),
+                ).delete(synchronize_session=False)
+                db.commit()
+
             channel = db.query(Channel).filter_by(id=channel_id).first()
-            if not channel:
-                continue
             posts = (
                 db.query(Post)
                 .filter(Post.id.in_(post_ids))
                 .order_by(Post.id)
                 .all()
             )
+            # Nothing left to send (channel gone or posts purged) — drop the
+            # stale rows so they don't linger or produce an empty message.
+            if not channel or not posts:
+                _drop_rows()
+                continue
+
             label = channel.title or f"@{channel.username}"
             text = _format_batch_message(
                 label, channel.username,
@@ -416,42 +462,75 @@ async def _flush_pending() -> None:
                 lang=_user_lang(db, tg_id),
             )
             try:
-                await ptb_app.bot.send_message(
-                    chat_id=tg_id, text=text, parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-                db.query(PendingPost).filter(
-                    PendingPost.telegram_id == tg_id,
-                    PendingPost.channel_id == channel_id,
-                    PendingPost.post_id.in_(post_ids),
-                ).delete(synchronize_session=False)
-                db.commit()
-                logger.info("✅ Scheduled batch (%d posts) @%s → user %s",
+                for chunk in _split_message(text):
+                    await ptb_app.bot.send_message(
+                        chat_id=tg_id, text=chunk, parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
+                _drop_rows()
+                logger.info("✅ Delivered persisted batch (%d posts) @%s → user %s",
                             len(posts), channel.username, tg_id)
             except Exception as exc:
                 db.rollback()
-                logger.warning("Cannot send scheduled batch to user %s: %s", tg_id, exc)
+                logger.warning("Cannot send persisted batch to user %s: %s", tg_id, exc)
     finally:
         db.close()
 
 
-async def _pending_delivery_loop() -> None:
-    """Fire queued batch delivery at each hour in BATCH_HOURS_UTC (e.g. 6 и 20 UTC)."""
-    hours = sorted(set(config.BATCH_HOURS_UTC)) or [6, 20]
+def _cleanup_old_posts(db) -> int:
+    """Purge posts older than POST_RETENTION_DAYS from the DB.
+
+    Chat messages already sent to users are untouched — only DB rows go.
+    The polling cursor lives on Channel.last_message_id, so deleting posts
+    never causes old posts to be re-fetched or re-delivered.
+
+    Posts still referenced by pending_posts (an undelivered burst that a
+    restart persisted) are NEVER deleted — so cleanup can't race the startup
+    flush or destroy work that hasn't reached the user yet.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=config.POST_RETENTION_DAYS)
+    undelivered = db.query(PendingPost.post_id)
+    old_ids = [
+        row[0] for row in db.query(Post.id)
+        .filter(Post.created_at < cutoff, Post.id.notin_(undelivered))
+        .all()
+    ]
+    if not old_ids:
+        return 0
+    from src.models import Bookmark
+    deleted = 0
+    for i in range(0, len(old_ids), 500):
+        chunk = old_ids[i:i + 500]
+        db.query(Bookmark).filter(Bookmark.post_id.in_(chunk)).delete(
+            synchronize_session=False
+        )
+        deleted += db.query(Post).filter(Post.id.in_(chunk)).delete(
+            synchronize_session=False
+        )
+    db.commit()
+    return deleted
+
+
+def _run_cleanup_once() -> None:
+    """Blocking DB purge — run via asyncio.to_thread to keep the loop free."""
+    db = get_session()
+    try:
+        n = _cleanup_old_posts(db)
+        if n:
+            logger.info("Cleanup: purged %d post(s) older than %d day(s)",
+                        n, config.POST_RETENTION_DAYS)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Post cleanup failed: %s", exc)
+    finally:
+        db.close()
+
+
+async def _cleanup_loop() -> None:
+    """Daily: purge old posts from the DB (off the event loop thread)."""
     while True:
-        now = datetime.now(timezone.utc)
-        candidates = [
-            now.replace(hour=h, minute=0, second=0, microsecond=0) for h in hours
-        ]
-        future = [t for t in candidates if t > now]
-        target = future[0] if future else candidates[0] + timedelta(days=1)
-        sleep_secs = (target - now).total_seconds()
-        logger.info("Next scheduled batch delivery in %.0f minutes", sleep_secs / 60)
-        await asyncio.sleep(sleep_secs)
-        try:
-            await _flush_pending()
-        except Exception as exc:
-            logger.warning("Scheduled batch delivery failed: %s", exc)
+        await asyncio.sleep(24 * 3600)
+        await asyncio.to_thread(_run_cleanup_once)
 
 
 MAX_MESSAGE_CHARS = 3900  # Telegram limit is 4096; keep headroom for tags
@@ -603,23 +682,14 @@ async def _poll_channels(client: TelegramClient) -> None:
         db = get_session()
         try:
             channels = db.query(Channel).filter(Channel.telegram_id.isnot(None)).all()
-            channel_list = [(ch.id, ch.telegram_id, ch.username, ch.title) for ch in channels]
+            channel_list = [
+                (ch.id, ch.telegram_id, ch.username, ch.title, ch.last_message_id or 0)
+                for ch in channels
+            ]
         finally:
             db.close()
 
-        for ch_id, tg_channel_id, username, title in channel_list:
-            db = get_session()
-            try:
-                last_post = (
-                    db.query(Post)
-                    .filter_by(channel_id=ch_id)
-                    .order_by(Post.message_id.desc())
-                    .first()
-                )
-                min_id = last_post.message_id if last_post else 0
-            finally:
-                db.close()
-
+        for ch_id, tg_channel_id, username, title, min_id in channel_list:
             try:
                 messages = await client.get_messages(tg_channel_id, limit=20, min_id=min_id)
                 if messages:
@@ -692,10 +762,22 @@ async def start_userbot() -> TelegramClient:
     await _resolve_channels(client)
 
     loop = asyncio.get_event_loop()
+
+    async def _startup_maintenance() -> None:
+        # Order matters: deliver restart-persisted batches first, THEN purge —
+        # cleanup skips pending-referenced posts anyway, but flushing first
+        # gets the user their posts promptly and empties the queue.
+        try:
+            await _flush_pending()
+        except Exception as exc:
+            logger.warning("Startup flush failed: %s", exc)
+        await asyncio.to_thread(_run_cleanup_once)
+
     loop.create_task(_poll_channels(client))
     loop.create_task(_digest_loop())
     loop.create_task(_batch_flush_loop(client))
-    loop.create_task(_pending_delivery_loop())
+    loop.create_task(_startup_maintenance())
+    loop.create_task(_cleanup_loop())
 
     _client = client
     db = get_session()

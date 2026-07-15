@@ -100,6 +100,9 @@ class Channel(Base):
     username: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     title: Mapped[str | None] = mapped_column(String(256))
     telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Polling cursor: highest message_id ever seen. Lives on the channel so
+    # that daily post cleanup can never make the bot re-fetch old posts.
+    last_message_id: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user_channels: Mapped[list["UserChannel"]] = relationship(back_populates="channel")
