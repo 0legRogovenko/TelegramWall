@@ -81,16 +81,6 @@ class User(Base):
     def can_auto_summary(self) -> bool:
         return self.subscription_tier in _PRO_TIERS
 
-    @property
-    def is_quiet_now(self) -> bool:
-        if self.quiet_start is None or self.quiet_end is None:
-            return False
-        hour = datetime.now(timezone.utc).hour
-        qs, qe = self.quiet_start, self.quiet_end
-        if qs <= qe:
-            return qs <= hour < qe
-        return hour >= qs or hour < qe
-
 
 class Channel(Base):
     """Global registry of channels. Deduped by username."""
@@ -126,12 +116,6 @@ class UserChannel(Base):
 
     user: Mapped["User"] = relationship(back_populates="user_channels")
     channel: Mapped["Channel"] = relationship(back_populates="user_channels")
-
-    @property
-    def keyword_list(self) -> list[str]:
-        if not self.keywords:
-            return []
-        return [k.strip().lower() for k in self.keywords.split(",") if k.strip()]
 
 
 class Post(Base):

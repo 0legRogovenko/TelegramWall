@@ -22,7 +22,6 @@ class Config:
     API_ID: int = int(os.environ["TELEGRAM_API_ID"])
     API_HASH: str = os.environ["TELEGRAM_API_HASH"]
     PHONE: str = os.environ["TELEGRAM_PHONE"]
-    SESSION_NAME: str = os.getenv("TELEGRAM_SESSION_NAME", "userbot")
     SESSION_PATH: str = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "sessions",
@@ -64,7 +63,6 @@ class Config:
     SUBSCRIPTION_PRICE_ANNUAL_PRO_RUB: int = int(
         os.getenv("SUBSCRIPTION_PRICE_ANNUAL_PRO_RUB", "479000")
     )
-    SUBSCRIPTION_DAYS: int = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
     CHANNEL_LIMIT_FREE: int = int(os.getenv("CHANNEL_LIMIT_FREE", "3"))
     CHANNEL_LIMIT_BASIC: int = int(os.getenv("CHANNEL_LIMIT_BASIC", "10"))
     TRIAL_DAYS: int = int(os.getenv("TRIAL_DAYS", "3"))
