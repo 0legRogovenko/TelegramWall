@@ -62,6 +62,12 @@ def patch_db_session(db, monkeypatch):
     for target in targets:
         monkeypatch.setattr(target, _test_db_session)
 
+    # metrics builds its own short-lived sessions rather than using db_session,
+    # so it needs pointing at the test engine explicitly — otherwise every
+    # record()/flush() writes to the untabled module engine, swallows the error
+    # by design, and the whole instrumentation path looks tested but isn't.
+    monkeypatch.setattr("src.services.metrics.SessionFactory", _TestSession)
+
 
 # ── Telegram mock helpers ─────────────────────────────────────────────────────
 

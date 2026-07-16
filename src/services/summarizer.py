@@ -1,6 +1,7 @@
 import anthropic
 
 from src.config import config
+from src.services import metrics
 
 # Precision-tuned for minimal token spend: output tokens cost 5x input,
 # so every prompt hard-caps response length and format.
@@ -108,8 +109,10 @@ def is_relevant(text: str, filter_prompt: str) -> bool:
                 ),
             }],
         )
+        metrics.record_ai(metrics.AI_FILTER, msg.usage)
         return "yes" in _text_of(msg).lower()
-    except Exception:
+    except Exception as exc:
+        metrics.record(metrics.ERROR_AI, f"filter: {exc}")
         return True  # fail open — deliver if AI unavailable
 
 
@@ -130,6 +133,7 @@ def summarize(text: str, lang: str = "ru") -> str:
         system=SUMMARY_SYSTEM.get(lang, SUMMARY_SYSTEM["ru"]),
         messages=[{"role": "user", "content": text[:MAX_INPUT_CHARS]}],
     )
+    metrics.record_ai(metrics.AI_SUMMARY, message.usage)
     return _text_of(message)
 
 
@@ -154,6 +158,7 @@ def build_digest(sections: list[tuple[str, list[str]]], lang: str = "ru") -> str
         system=DIGEST_SYSTEM.get(lang, DIGEST_SYSTEM["ru"]),
         messages=[{"role": "user", "content": content}],
     )
+    metrics.record_ai(metrics.AI_DIGEST, message.usage)
     text = _text_of(message)
     if message.stop_reason == "max_tokens" and "\n\n" in text:
         # cut mid-sentence — drop the incomplete trailing paragraph

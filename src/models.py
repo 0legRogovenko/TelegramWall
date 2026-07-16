@@ -162,6 +162,40 @@ class PendingPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class BotEvent(Base):
+    """Append-only operational log — the source of the daily admin report.
+
+    One row per notable event (post saved, delivery, AI call, error).
+    Purged on the same daily schedule as posts.
+    """
+    __tablename__ = "bot_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # For ai_* events: "<input_tokens>,<output_tokens>". For errors: the message.
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
+    )
+
+
+class BotHealth(Base):
+    """Singleton (id=1) liveness row — written by the bot, read by the watchdog.
+
+    The external healthcheck workflow can't see inside the process, so the bot
+    stamps last_seen_at; a stale stamp is what proves the bot is down.
+    """
+    __tablename__ = "bot_health"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Date (UTC) of the last daily report — lets a restart send a missed report late
+    last_report_on: Mapped[str | None] = mapped_column(String(10))
+    # Set by the watchdog when it alerts; cleared when the bot recovers
+    alert_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 

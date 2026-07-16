@@ -70,6 +70,10 @@ class Config:
     DIGEST_HOUR_UTC: int = int(os.getenv("DIGEST_HOUR_UTC", "8"))
     # Posts older than this are purged from the DB daily (chat messages remain)
     POST_RETENTION_DAYS: int = int(os.getenv("POST_RETENTION_DAYS", "3"))
+    # Daily ops report to ADMIN_IDS. Default 7 UTC = 10:00 MSK.
+    ADMIN_REPORT_HOUR_UTC: int = int(os.getenv("ADMIN_REPORT_HOUR_UTC", "7"))
+    # HEARTBEAT_STALE_MINUTES lives in scripts/healthcheck.py — the watchdog runs
+    # as a separate GitHub Actions job and never imports this config.
 
     # Flask
     SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "change-me")

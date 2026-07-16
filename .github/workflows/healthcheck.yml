@@ -1,0 +1,36 @@
+name: Healthcheck
+
+# External watchdog: reads the bot's heartbeat from the DB and alerts admins
+# in Telegram if it goes stale. Runs independently of the Bot workflow — that
+# is the whole point: a dead bot cannot report its own death.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+  workflow_dispatch:          # manual run for testing
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install minimal deps
+        run: pip install SQLAlchemy==2.0.36 psycopg2-binary==2.9.10
+
+      - name: Check bot heartbeat
+        env:
+          DATABASE_URL:       ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_IDS: ${{ secrets.TELEGRAM_ADMIN_IDS }}
+          # Tunable via repo variables (Settings → Variables), defaults in the script.
+          HEARTBEAT_STALE_MINUTES: ${{ vars.HEARTBEAT_STALE_MINUTES }}
+          REALERT_HOURS:           ${{ vars.REALERT_HOURS }}
+        run: python scripts/healthcheck.py

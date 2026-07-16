@@ -85,6 +85,26 @@ def init_db() -> None:
                 UNIQUE(user_id, post_id)
             )
         """)
+        # bot_events — operational log behind the daily admin report
+        _run_migration(conn, """
+            CREATE TABLE IF NOT EXISTS bot_events (
+                id SERIAL PRIMARY KEY,
+                type VARCHAR(32) NOT NULL,
+                detail TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        # bot_health — singleton liveness row read by the external watchdog.
+        # The row itself is created by the first metrics.heartbeat() call.
+        _run_migration(conn, """
+            CREATE TABLE IF NOT EXISTS bot_health (
+                id INTEGER PRIMARY KEY,
+                started_at TIMESTAMPTZ,
+                last_seen_at TIMESTAMPTZ,
+                last_report_on VARCHAR(10),
+                alert_sent_at TIMESTAMPTZ
+            )
+        """)
         # indexes for hot query paths
         _run_migration(
             conn, "CREATE INDEX IF NOT EXISTS ix_posts_created_at ON posts (created_at)"
@@ -97,6 +117,13 @@ def init_db() -> None:
         _run_migration(
             conn,
             "CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)",
+        )
+        _run_migration(
+            conn,
+            "CREATE INDEX IF NOT EXISTS ix_bot_events_created_at ON bot_events (created_at)",
+        )
+        _run_migration(
+            conn, "CREATE INDEX IF NOT EXISTS ix_bot_events_type ON bot_events (type)"
         )
 
 

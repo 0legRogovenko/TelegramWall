@@ -100,3 +100,13 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{top_lines}",
             parse_mode="HTML",
         )
+
+
+async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """On-demand copy of the daily ops report (admins only)."""
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return
+    from src.services.report import build_report
+    with db_session() as db:
+        text = build_report(db)
+    await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)

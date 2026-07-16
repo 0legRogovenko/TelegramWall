@@ -33,6 +33,7 @@ from src.bot.handlers import (
     cmd_language,
     cmd_refer,
     cmd_remove_channel,
+    cmd_report,
     cmd_start,
     cmd_stats,
     cmd_status,
@@ -85,6 +86,7 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
     app.add_handler(CommandHandler("add_channel", cmd_add_channel))
     app.add_handler(CommandHandler("remove_channel", cmd_remove_channel))
     app.add_handler(CommandHandler("admin", cmd_admin))
+    app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("aifilter", cmd_aifilter))
     app.add_handler(CallbackQueryHandler(callback_handler))

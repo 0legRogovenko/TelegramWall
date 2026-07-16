@@ -18,7 +18,8 @@ from src.bot.i18n import count_new_posts, lang_of, t
 from src.bot.keyboards import SEP, summary_button
 from src.config import config
 from src.database import get_session
-from src.models import Channel, PendingPost, Post, User, UserChannel
+from src.models import BotEvent, BotHealth, Channel, PendingPost, Post, User, UserChannel
+from src.services import metrics
 from src.services.summarizer import build_digest, summarize
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,7 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
             ch_row.last_message_id = msg.id
         db.commit()
         db.close()
+        metrics.record(metrics.POST_SAVED)
 
     except Exception as exc:
         logger.exception("Error saving post msg_id=%s: %s", msg.id, exc)
@@ -233,8 +235,10 @@ async def _deliver_to_user(
                 reply_markup=summary_button(post_id, lang),
             )
             logger.info("✅ Sent post #%s to user %s", post_id, tg_id)
+            metrics.record(metrics.DELIVERED_POST)
         except Exception as exc:
             logger.warning("Cannot deliver post #%s to user %s: %s", post_id, tg_id, exc)
+            metrics.record(metrics.ERROR_DELIVERY, str(exc))
         return
 
     # Media-only posts: forward the original (buttons can't ride on forwards)
@@ -246,10 +250,12 @@ async def _deliver_to_user(
             message_id=msg.id,
         )
         logger.info("✅ Forwarded media post #%s to user %s", post_id, tg_id)
+        metrics.record(metrics.DELIVERED_POST)
     except Exception as exc:
         logger.warning(
             "Media post #%s could not be forwarded to user %s: %s", post_id, tg_id, exc
         )
+        metrics.record(metrics.ERROR_DELIVERY, str(exc))
 
 
 async def _send_summary(
@@ -293,9 +299,11 @@ async def _send_summary(
             disable_web_page_preview=True,
         )
         logger.info("✅ Auto-summary for post #%s → user %s", post_id, tg_id)
+        metrics.record(metrics.DELIVERED_SUMMARY)
         return True
     except Exception as exc:
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
+        metrics.record(metrics.ERROR_DELIVERY, str(exc))
         return False
 
 
@@ -366,6 +374,7 @@ async def _send_batch_now(tg_id: int, entry: dict) -> None:
         )
     logger.info("✅ Burst (%d posts) from %s → user %s",
                 len(entry["posts"]), entry["label"], tg_id)
+    metrics.record(metrics.DELIVERED_BURST, f'{len(entry["posts"])} posts')
 
 
 def flush_buffer_on_shutdown() -> None:
@@ -380,6 +389,11 @@ def flush_buffer_on_shutdown() -> None:
         _queue_pending(tg_id, channel_id, entry["posts"])
     if entries:
         logger.info("Shutdown flush: %d buffered batch(es) persisted", len(entries))
+    # Metrics buffer too — otherwise every restart drops the events since the
+    # last periodic flush, and restarts are frequent by design.
+    written = metrics.flush()
+    if written:
+        logger.info("Shutdown flush: %d metric event(s) persisted", written)
 
 
 async def _batch_flush_loop(client: TelegramClient) -> None:
@@ -410,6 +424,7 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
                 # Transient send failure — persist so the next startup retries,
                 # instead of silently dropping the burst.
                 logger.warning("Batch flush error for user %s: %s — re-queued", tg_id, exc)
+                metrics.record(metrics.ERROR_DELIVERY, f"burst: {exc}")
                 _queue_pending(tg_id, channel_id, posts)
 
 
@@ -477,6 +492,92 @@ async def _flush_pending() -> None:
         db.close()
 
 
+def _heartbeat_tick() -> None:
+    """Blocking: drain the metrics buffer, then stamp liveness. Never raises."""
+    metrics.flush()
+    metrics.heartbeat()
+
+
+async def _heartbeat_loop() -> None:
+    """Stamp liveness every 5 min — this is what the external watchdog reads.
+
+    The body is guarded because nothing awaits this task: an escaped exception
+    would kill it silently, freezing last_seen_at and making the watchdog
+    report a perfectly healthy bot as dead — forever.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(_heartbeat_tick)
+        except Exception as exc:
+            logger.warning("Heartbeat tick failed: %s", exc)
+        await asyncio.sleep(300)
+
+
+def _report_due(db) -> bool:
+    """True if today's report hasn't been sent and the report hour has passed.
+
+    Stored per-date so a restart can still deliver a report the process
+    missed while it was down.
+    """
+    now = datetime.now(timezone.utc)
+    if now.hour < config.ADMIN_REPORT_HOUR_UTC:
+        return False
+    row = db.query(BotHealth).filter_by(id=1).first()
+    today = now.strftime("%Y-%m-%d")
+    return not row or row.last_report_on != today
+
+
+def _mark_report_sent(db) -> None:
+    row = db.query(BotHealth).filter_by(id=1).first()
+    if row is None:
+        row = BotHealth(id=1)
+        db.add(row)
+    row.last_report_on = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    db.commit()
+
+
+def _claim_report(db) -> bool:
+    """Mark today's report as sent, up front. Returns False if the write failed.
+
+    Claiming BEFORE sending is deliberate. If the mark fails after a successful
+    send, the loop would re-send the full report every 10 minutes for the rest
+    of the day — dozens of duplicates to every admin. Losing one report to a
+    failed send is the better direction, and /report fetches it on demand.
+    """
+    try:
+        _mark_report_sent(db)
+        return True
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Could not claim daily report: %s", exc)
+        return False
+
+
+async def _report_loop() -> None:
+    """Send the daily admin report once per day, catching up after downtime."""
+    from src.services.report import send_report_to_admins
+    while True:
+        db = get_session()
+        try:
+            claimed = _report_due(db) and _claim_report(db)
+        except Exception as exc:
+            claimed = False
+            logger.debug("Report due-check failed: %s", exc)
+        finally:
+            db.close()
+
+        if claimed:
+            try:
+                # Drain buffered events first so the report counts today's work.
+                await asyncio.to_thread(metrics.flush)
+                if await send_report_to_admins():
+                    logger.info("Daily admin report sent")
+            except Exception as exc:
+                logger.warning("Daily report failed: %s", exc)
+
+        await asyncio.sleep(600)  # re-check every 10 min
+
+
 def _cleanup_old_posts(db) -> int:
     """Purge posts older than POST_RETENTION_DAYS from the DB.
 
@@ -489,6 +590,15 @@ def _cleanup_old_posts(db) -> int:
     flush or destroy work that hasn't reached the user yet.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=config.POST_RETENTION_DAYS)
+
+    # Ops events age out on the same schedule — they only feed the daily report.
+    # This runs before the posts pass and outside its early return: bot_events
+    # grows on every delivery and AI call, so it must be trimmed even on days
+    # when no post is old enough to expire.
+    db.query(BotEvent).filter(BotEvent.created_at < cutoff).delete(
+        synchronize_session=False
+    )
+
     undelivered = db.query(PendingPost.post_id)
     old_ids = [
         row[0] for row in db.query(Post.id)
@@ -496,6 +606,7 @@ def _cleanup_old_posts(db) -> int:
         .all()
     ]
     if not old_ids:
+        db.commit()
         return 0
     from src.models import Bookmark
     deleted = 0
@@ -763,6 +874,9 @@ async def start_userbot() -> TelegramClient:
 
     loop = asyncio.get_event_loop()
 
+    await asyncio.to_thread(metrics.heartbeat, True)
+    await asyncio.to_thread(metrics.record, metrics.STARTED)
+
     async def _startup_maintenance() -> None:
         # Order matters: deliver restart-persisted batches first, THEN purge —
         # cleanup skips pending-referenced posts anyway, but flushing first
@@ -778,6 +892,8 @@ async def start_userbot() -> TelegramClient:
     loop.create_task(_batch_flush_loop(client))
     loop.create_task(_startup_maintenance())
     loop.create_task(_cleanup_loop())
+    loop.create_task(_heartbeat_loop())
+    loop.create_task(_report_loop())
 
     _client = client
     db = get_session()
