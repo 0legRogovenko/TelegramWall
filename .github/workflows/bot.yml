@@ -1,15 +1,21 @@
 name: Bot
 
 # Runs the bot in polling mode.
-# The job has a 5-hour timeout; the cron restarts it every 5 hours automatically.
 # concurrency: cancel-in-progress ensures only one instance runs at a time —
 # a new push or cron fires, kills the previous instance, then starts fresh.
+#
+# The cron interval MUST stay well below timeout-minutes. GitHub delays or drops
+# scheduled runs under load (observed here: up to 2h late, and whole ticks
+# skipped). When the interval equalled the timeout, every such delay was a
+# minute-for-minute outage — the old job had already died when the late tick
+# arrived. Restarting every 2h against a ~5.8h timeout means the bot only goes
+# down if roughly three ticks in a row are lost.
 
 on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 */5 * * *"   # restart every 5 hours
+    - cron: "0 */2 * * *"   # restart every 2 hours — see note above
   workflow_dispatch:         # manual trigger from GitHub UI
 
 concurrency:
@@ -19,7 +25,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 300     # 5 hours — just under GitHub's 6-hour limit
+    timeout-minutes: 350     # ~5.8h — just under GitHub's 6-hour job limit
 
     steps:
       - uses: actions/checkout@v4
