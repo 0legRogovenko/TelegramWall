@@ -150,6 +150,11 @@ class TestBuildReport:
         assert "delivery: 2" in text
         assert "Flood control" in text
 
+    def test_counts_only_real_error_types(self, db):
+        # "error_%" as a LIKE pattern would match this too: _ is a wildcard.
+        _event(db, "errors_total", "not an error event")
+        assert "Ошибок нет" in build_report(db)
+
     def test_new_user_increments_daily_count(self, db):
         def new_count() -> int:
             m = re.search(r"\(\+(\d+) за сутки\)", build_report(db))

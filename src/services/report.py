@@ -72,17 +72,20 @@ def build_report(db) -> str:
     ai_digest = count(metrics.AI_DIGEST)
     ai_filter = count(metrics.AI_FILTER)
 
-    # Errors, grouped
+    # Errors, grouped. Matched against the known types rather than LIKE
+    # "error_%" — in SQL the underscore is a single-character wildcard, so that
+    # pattern would also swallow any future type merely starting with "error".
+    err_types = [metrics.ERROR_AI, metrics.ERROR_DELIVERY]
     err_rows = (
         db.query(BotEvent.type, sqlfunc.count(BotEvent.id))
-        .filter(BotEvent.type.like("error_%"), BotEvent.created_at >= day_ago)
+        .filter(BotEvent.type.in_(err_types), BotEvent.created_at >= day_ago)
         .group_by(BotEvent.type)
         .all()
     )
     err_total = sum(c for _, c in err_rows)
     last_err = (
         db.query(BotEvent)
-        .filter(BotEvent.type.like("error_%"), BotEvent.created_at >= day_ago)
+        .filter(BotEvent.type.in_(err_types), BotEvent.created_at >= day_ago)
         .order_by(BotEvent.created_at.desc())
         .first()
     )
@@ -115,6 +118,11 @@ def build_report(db) -> str:
         f"  📝 Саммари: {ai_summary}  ·  📰 Дайджестов: {ai_digest}  ·  🔍 Фильтров: {ai_filter}",
         f"  💰 Потрачено: <b>${cost:.4f}</b>",
     ]
+
+    # The price table is Haiku's. Say so rather than quietly reporting a wrong
+    # number if someone points CLAUDE_MODEL somewhere else.
+    if not config.CLAUDE_MODEL.startswith("claude-haiku"):
+        lines.append(f"  <i>⚠️ сумма посчитана по ценам Haiku, модель: {config.CLAUDE_MODEL}</i>")
 
     if err_total:
         lines += ["", f"<b>⚠️ Ошибки: {err_total}</b>"]
