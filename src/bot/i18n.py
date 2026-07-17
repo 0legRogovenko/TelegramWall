@@ -131,7 +131,9 @@ T = {
               "<b>Тарифы</b>\n  Free — до {free_limit} каналов\n"
               "  ⭐ Basic — до {basic_limit} каналов + саммари\n    {basic_price} / мес\n"
               "  💎 Pro — ∞ каналов + авто-саммари + дайджест\n    {pro_price} / мес\n\n"
-              "<code>/trial</code> — 3 дня Pro бесплатно\n<code>/refer</code> — пригласить → +{ref_days} дн.",
+              "<code>/trial</code> — 3 дня Pro бесплатно\n<code>/refer</code> — пригласить → +{ref_days} дн.\n\n"
+              "<i>Открытый код (AGPL-3.0): "
+              "<a href=\"https://github.com/0legRogovenko/TelegramWall\">github</a></i>",
         "en": "📖 <b>TelegramWall — quick start</b>\n\n"
               "<b>Channels</b>\n  <code>/add_channel @username</code> — add (t.me links work too)\n"
               "  <code>/channels</code> — list & manage\n\n"
@@ -144,7 +146,9 @@ T = {
               "<b>Plans</b>\n  Free — up to {free_limit} channels\n"
               "  ⭐ Basic — up to {basic_limit} channels + summaries\n    {basic_price} / mo\n"
               "  💎 Pro — ∞ channels + auto-summary + digest\n    {pro_price} / mo\n\n"
-              "<code>/trial</code> — 3 days of Pro for free\n<code>/refer</code> — invite → +{ref_days} days",
+              "<code>/trial</code> — 3 days of Pro for free\n<code>/refer</code> — invite → +{ref_days} days\n\n"
+              "<i>Open source (AGPL-3.0): "
+              "<a href=\"https://github.com/0legRogovenko/TelegramWall\">github</a></i>",
         "es": "📖 <b>TelegramWall — inicio rápido</b>\n\n"
               "<b>Canales</b>\n  <code>/add_channel @username</code> — añadir (enlaces t.me también)\n"
               "  <code>/channels</code> — lista y gestión\n\n"
@@ -157,7 +161,9 @@ T = {
               "<b>Planes</b>\n  Free — hasta {free_limit} canales\n"
               "  ⭐ Basic — hasta {basic_limit} canales + resúmenes\n    {basic_price} / mes\n"
               "  💎 Pro — ∞ canales + auto-resumen + boletín\n    {pro_price} / mes\n\n"
-              "<code>/trial</code> — 3 días de Pro gratis\n<code>/refer</code> — invita → +{ref_days} días",
+              "<code>/trial</code> — 3 días de Pro gratis\n<code>/refer</code> — invita → +{ref_days} días\n\n"
+              "<i>Código abierto (AGPL-3.0): "
+              "<a href=\"https://github.com/0legRogovenko/TelegramWall\">github</a></i>",
     },
 
     # /status
