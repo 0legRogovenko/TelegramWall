@@ -61,6 +61,8 @@ def init_db() -> None:
                 (SELECT MAX(message_id) FROM posts WHERE posts.channel_id = channels.id), 0
             ) WHERE COALESCE(last_message_id, 0) = 0
         """)
+        # posts — album grouping (durable, survives restarts)
+        _run_migration(conn, "ALTER TABLE posts ADD COLUMN grouped_id BIGINT")
         # user_channels
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN keywords TEXT")
         _run_migration(conn, "ALTER TABLE user_channels ADD COLUMN ai_filter TEXT")
@@ -100,6 +102,9 @@ def init_db() -> None:
         _run_migration(
             conn,
             "CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)",
+        )
+        _run_migration(
+            conn, "CREATE INDEX IF NOT EXISTS ix_posts_grouped_id ON posts (grouped_id)"
         )
 
 

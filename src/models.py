@@ -127,6 +127,9 @@ class Post(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     text: Mapped[str | None] = mapped_column(Text)
     media_type: Mapped[str | None] = mapped_column(String(32))
+    # Telegram album id: every item of an album shares it. Persisted (not kept
+    # in memory) so the ~2h restart cannot split one album into two posts.
+    grouped_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     summary: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, index=True

@@ -75,7 +75,7 @@ def build_report(db) -> str:
     # Errors, grouped. Matched against the known types rather than LIKE
     # "error_%" — in SQL the underscore is a single-character wildcard, so that
     # pattern would also swallow any future type merely starting with "error".
-    err_types = [metrics.ERROR_AI, metrics.ERROR_DELIVERY]
+    err_types = [metrics.ERROR_AI, metrics.ERROR_DELIVERY, metrics.ERROR_MEDIA]
     err_rows = (
         db.query(BotEvent.type, sqlfunc.count(BotEvent.id))
         .filter(BotEvent.type.in_(err_types), BotEvent.created_at >= day_ago)

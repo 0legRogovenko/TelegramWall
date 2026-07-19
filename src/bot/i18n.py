@@ -530,6 +530,14 @@ T = {
 
     "btn_summary": {"ru": "📝 Саммари", "en": "📝 Summary", "es": "📝 Resumen"},
 
+    # Post whose content the bot cannot re-send (oversized media, failed
+    # download, poll, etc.) — the header above it links to the original.
+    "media_fallback": {
+        "ru": "📎 <i>Содержимое этого поста — в оригинале, по ссылке выше</i>",
+        "en": "📎 <i>This post's content is in the original — link above</i>",
+        "es": "📎 <i>El contenido de esta publicación está en el original — enlace arriba</i>",
+    },
+
     # Command menu descriptions
     "cmd_start":     {"ru": "Начало работы", "en": "Get started", "es": "Empezar"},
     "cmd_channels":  {"ru": "Мои каналы", "en": "My channels", "es": "Mis canales"},

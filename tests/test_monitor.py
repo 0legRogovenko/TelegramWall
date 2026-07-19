@@ -220,3 +220,227 @@ class TestCleanup:
         assert deleted == 0
         assert db.query(Post).filter_by(id=old.id).first() is not None
         assert db.query(PendingPost).filter_by(post_id=old.id).first() is not None
+
+
+class TestMediaHelpers:
+    def test_size_gate_allows_under_limit(self):
+        from src.userbot.monitor import _media_size_ok
+
+        class F:
+            size = 5 * 1024 * 1024
+
+        class M:
+            file = F()
+
+        assert _media_size_ok(M())
+
+    def test_size_gate_blocks_over_limit(self):
+        from src.config import config
+        from src.userbot.monitor import _media_size_ok
+
+        class F:
+            size = (config.MEDIA_MAX_MB + 1) * 1024 * 1024
+
+        class M:
+            file = F()
+
+        assert not _media_size_ok(M())
+
+    def test_size_gate_allows_unknown_size(self):
+        # Photos may not report a size — they are small, let them through
+        from src.userbot.monitor import _media_size_ok
+
+        class M:
+            file = None
+
+        assert _media_size_ok(M())
+
+    def test_file_id_cache_extracts_photo_id(self):
+        from unittest.mock import MagicMock
+        from src.userbot.monitor import _cache_file_id, _media_file_ids
+
+        _media_file_ids.clear()
+        sent = MagicMock()
+        sent.photo = [MagicMock(file_id="small"), MagicMock(file_id="big")]
+        _cache_file_id(42, sent)
+        assert _media_file_ids[42] == "big"  # largest PhotoSize wins
+        _media_file_ids.clear()
+
+    def test_file_id_cache_is_bounded(self):
+        from unittest.mock import MagicMock
+        from src.userbot.monitor import _MEDIA_CACHE_MAX, _cache_file_id, _media_file_ids
+
+        _media_file_ids.clear()
+        for i in range(_MEDIA_CACHE_MAX + 10):
+            sent = MagicMock()
+            sent.photo = [MagicMock(file_id=f"f{i}")]
+            _cache_file_id(i, sent)
+        assert len(_media_file_ids) <= _MEDIA_CACHE_MAX
+        _media_file_ids.clear()
+
+    def test_file_id_cache_never_raises(self):
+        from src.userbot.monitor import _cache_file_id
+
+        _cache_file_id(1, object())  # no photo/video attrs at all — must not raise
+
+
+class TestAlbumCollapsing:
+    """An album (grouped_id) must become ONE post, not N."""
+
+    def _msg(self, msg_id, grouped_id=None, text=""):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import Message
+        m = MagicMock(spec=Message)
+        m.id = msg_id
+        m.message = text
+        m.grouped_id = grouped_id
+        from telethon.tl.types import MessageMediaPhoto
+        m.media = MagicMock(spec=MessageMediaPhoto)
+        return m
+
+    def test_album_creates_single_post(self, db, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        channel = create_channel(db, username="album_chan")
+        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(db, "close", lambda: None)  # keep shared session alive
+        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+
+        for i, text in ((1, "подпись альбома"), (2, ""), (3, "")):
+            m = self._msg(i, grouped_id=777, text=text)
+            asyncio.run(monitor._process_message(None, channel, m))
+
+        from src.models import Post
+        posts = db.query(Post).filter_by(channel_id=channel.id).all()
+        assert len(posts) == 1
+        assert posts[0].text == "подпись альбома"
+
+    def test_album_caption_on_later_item_is_attached(self, db, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        channel = create_channel(db, username="album_chan2")
+        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(db, "close", lambda: None)
+        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+
+        # caption arrives on the SECOND album item
+        first = self._msg(10, grouped_id=888, text="")
+        second = self._msg(11, grouped_id=888, text="поздняя подпись")
+        asyncio.run(monitor._process_message(None, channel, first))
+        asyncio.run(monitor._process_message(None, channel, second))
+
+        from src.models import Post
+        posts = db.query(Post).filter_by(channel_id=channel.id).all()
+        assert len(posts) == 1
+        assert posts[0].text == "поздняя подпись"
+
+    def test_album_siblings_advance_polling_cursor(self, db, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        channel = create_channel(db, username="album_chan3")
+        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(db, "close", lambda: None)
+        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+
+        for i in (21, 22, 23):
+            asyncio.run(monitor._process_message(None, channel, self._msg(i, grouped_id=999)))
+
+        db.refresh(channel)
+        # Cursor must pass the absorbed siblings or they would be re-fetched forever
+        assert channel.last_message_id == 23
+
+    def test_non_album_messages_unaffected(self, db, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        channel = create_channel(db, username="plain_chan")
+        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(db, "close", lambda: None)
+        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+
+        for i in (31, 32):
+            m = self._msg(i, grouped_id=None, text=f"post {i}")
+            asyncio.run(monitor._process_message(None, channel, m))
+
+        from src.models import Post
+        assert db.query(Post).filter_by(channel_id=channel.id).count() == 2
+
+
+class TestMediaClassification:
+    """_get_media_type must describe the post's OWN attachment.
+
+    Telethon's .photo/.video/.document helpers deliberately fall through to a
+    link's web preview, so classifying by them turned every text post with a
+    link into a photo post carrying the linked article's og:image.
+    """
+
+    def _msg(self, media):
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.media = media
+        return m
+
+    def test_link_preview_is_not_media(self):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import MessageMediaWebPage
+        from src.userbot.monitor import _get_media_type
+
+        assert _get_media_type(self._msg(MagicMock(spec=MessageMediaWebPage))) is None
+
+    def test_plain_text_post_is_not_media(self):
+        from src.userbot.monitor import _get_media_type
+        assert _get_media_type(self._msg(None)) is None
+
+    def test_photo_detected(self):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import MessageMediaPhoto
+        from src.userbot.monitor import _get_media_type
+
+        assert _get_media_type(self._msg(MagicMock(spec=MessageMediaPhoto))) == "photo"
+
+    def test_video_detected_by_document_attribute(self):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import DocumentAttributeVideo, MessageMediaDocument
+        from src.userbot.monitor import _get_media_type
+
+        media = MagicMock(spec=MessageMediaDocument)
+        media.document = MagicMock(attributes=[MagicMock(spec=DocumentAttributeVideo)])
+        assert _get_media_type(self._msg(media)) == "video"
+
+    def test_plain_document_detected(self):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import MessageMediaDocument
+        from src.userbot.monitor import _get_media_type
+
+        media = MagicMock(spec=MessageMediaDocument)
+        media.document = MagicMock(attributes=[])
+        assert _get_media_type(self._msg(media)) == "document"
+
+    def test_original_filename_recovered(self):
+        from unittest.mock import MagicMock
+        from telethon.tl.types import DocumentAttributeFilename, MessageMediaDocument
+        from src.userbot.monitor import _media_filename
+
+        attr = MagicMock(spec=DocumentAttributeFilename)
+        attr.file_name = "report.pdf"
+        media = MagicMock(spec=MessageMediaDocument)
+        media.document = MagicMock(attributes=[attr])
+        # Without this PTB names raw-bytes uploads 'application.octet-stream'
+        assert _media_filename(self._msg(media)) == "report.pdf"
+
+
+class TestFileIdCacheInvalidation:
+    def test_per_user_error_keeps_the_cached_file(self):
+        from src.userbot.monitor import _is_file_error
+        # A blocked recipient says nothing about the file — keep it, or every
+        # remaining subscriber re-downloads and re-uploads the same MBs.
+        assert not _is_file_error(Exception("Forbidden: bot was blocked by the user"))
+        assert not _is_file_error(Exception("Chat not found"))
+
+    def test_file_error_drops_the_cache(self):
+        from src.userbot.monitor import _is_file_error
+        assert _is_file_error(Exception("Bad Request: wrong file identifier"))
+        assert _is_file_error(Exception("Bad Request: MEDIA_CAPTION_TOO_LONG"))

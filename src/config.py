@@ -70,6 +70,10 @@ class Config:
     DIGEST_HOUR_UTC: int = int(os.getenv("DIGEST_HOUR_UTC", "8"))
     # Posts older than this are purged from the DB daily (chat messages remain)
     POST_RETENTION_DAYS: int = int(os.getenv("POST_RETENTION_DAYS", "3"))
+    # Media larger than this is not re-uploaded; the post falls back to a link.
+    # Bot API caps uploads at 50 MB anyway; the userbot downloads into memory,
+    # so keep this modest.
+    MEDIA_MAX_MB: int = int(os.getenv("MEDIA_MAX_MB", "20"))
     # Daily ops report to ADMIN_IDS. Default 7 UTC = 10:00 MSK.
     ADMIN_REPORT_HOUR_UTC: int = int(os.getenv("ADMIN_REPORT_HOUR_UTC", "7"))
     # HEARTBEAT_STALE_MINUTES lives in scripts/healthcheck.py — the watchdog runs

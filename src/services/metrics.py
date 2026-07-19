@@ -32,6 +32,7 @@ AI_DIGEST = "ai_digest"
 AI_FILTER = "ai_filter"
 ERROR_AI = "error_ai"
 ERROR_DELIVERY = "error_delivery"
+ERROR_MEDIA = "error_media"
 STARTED = "started"
 
 # Haiku 4.5 pricing, USD per 1M tokens — used to cost the ai_* events.
