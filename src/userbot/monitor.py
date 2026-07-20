@@ -380,7 +380,7 @@ async def _deliver_to_user(
         ):
             sent = await _send_summary(
                 client, tg_id, post_id, text, channel_label, db, lang,
-                username=username, msg_id=msg.id,
+                username=username, msg_id=msg.id, msg=msg,
             )
             if sent:
                 return
@@ -496,8 +496,15 @@ async def _send_summary(
     lang: str = "ru",
     username: str | None = None,
     msg_id: int | None = None,
+    msg=None,
 ) -> bool:
-    """Send the AI summary with a link to the original post. Returns True on success."""
+    """Send the AI summary with a link to the original post. Returns True on success.
+
+    A media post keeps its media: the summary rides as the caption, so
+    auto-summary mode shortens the feed without stripping the picture.
+    Any media problem falls back to the plain text form — the summary itself
+    must arrive either way.
+    """
     post = db.query(Post).filter_by(id=post_id).first()
     if not post:
         return False
@@ -517,12 +524,44 @@ async def _send_summary(
     else:
         url = f"https://t.me/{channel_label.lstrip('@')}"
 
+    body = t("auto_summary_msg", lang, label=html.escape(channel_label),
+             text=html.escape(post.summary), url=url, id=post_id)
+
+    media_kind = _get_media_type(msg) if msg is not None else None
+    # Summaries are capped at ~250 tokens, so the caption limit is rarely an
+    # issue — but a long channel label plus a wordy summary can still cross
+    # 1024 visible chars, and then the whole send would fail.
+    if media_kind and len(channel_label) + len(post.summary) > 950:
+        media_kind = None
+    if media_kind:
+        media = _media_file_ids.get(post_id)
+        uploaded_bytes = False
+        if media is None and _media_size_ok(msg):
+            media = await _download_media_bytes(client, msg)
+            uploaded_bytes = media is not None
+        if media is not None:
+            try:
+                sent = await _send_media(
+                    tg_id, media_kind, media, body, filename=_media_filename(msg),
+                )
+                if uploaded_bytes:
+                    _cache_file_id(post_id, sent)
+                logger.info("✅ Auto-summary+%s for post #%s → user %s",
+                            media_kind, post_id, tg_id)
+                metrics.record(metrics.DELIVERED_SUMMARY)
+                return True
+            except Exception as exc:
+                if _is_file_error(exc):
+                    _media_file_ids.pop(post_id, None)
+                logger.warning("Summary media send failed for post #%s to %s: %s",
+                               post_id, tg_id, exc)
+                metrics.record(metrics.ERROR_MEDIA, str(exc))
+
     from src.bot.app import ptb_app
     try:
         await ptb_app.bot.send_message(
             chat_id=tg_id,
-            text=t("auto_summary_msg", lang, label=html.escape(channel_label),
-                   text=html.escape(post.summary), url=url, id=post_id),
+            text=body,
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
