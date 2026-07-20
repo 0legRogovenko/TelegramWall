@@ -444,3 +444,113 @@ class TestFileIdCacheInvalidation:
         from src.userbot.monitor import _is_file_error
         assert _is_file_error(Exception("Bad Request: wrong file identifier"))
         assert _is_file_error(Exception("Bad Request: MEDIA_CAPTION_TOO_LONG"))
+
+
+class TestFlushTiming:
+    """_entry_due: bursts wait the full window, lone posts only a short grace."""
+
+    def _entry(self, n_posts, age):
+        import time
+        return {"posts": [{"post_id": i} for i in range(n_posts)],
+                "first_at": time.monotonic() - age}
+
+    def test_single_post_flushes_after_grace(self):
+        import time
+        from src.userbot.monitor import SINGLE_POST_GRACE_SECS, _entry_due
+        now = time.monotonic()
+        assert not _entry_due(self._entry(1, SINGLE_POST_GRACE_SECS - 5), now)
+        assert _entry_due(self._entry(1, SINGLE_POST_GRACE_SECS + 1), now)
+
+    def test_burst_waits_the_full_window(self):
+        import time
+        from src.userbot.monitor import BATCH_WINDOW_SECS, _entry_due
+        now = time.monotonic()
+        # Two posts: the grace path must NOT apply
+        assert not _entry_due(self._entry(2, BATCH_WINDOW_SECS - 5), now)
+        assert _entry_due(self._entry(2, BATCH_WINDOW_SECS + 1), now)
+
+
+class TestPollPagination:
+    """Catch-up must be oldest-first and complete — the old newest-20 cap
+    silently dropped every post beyond 20 after a restart gap."""
+
+    def _client(self, history_ids):
+        from unittest.mock import AsyncMock, MagicMock
+
+        def make(mid):
+            m = MagicMock()
+            m.id = mid
+            return m
+
+        client = MagicMock()
+
+        def iter_messages(entity, min_id=0, reverse=False, limit=None):
+            assert reverse, "catch-up must iterate oldest-first"
+            ids = sorted(i for i in history_ids if i > min_id)[:limit]
+
+            class _It:
+                def __aiter__(self):
+                    self._i = iter(ids)
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        return make(next(self._i))
+                    except StopIteration:
+                        raise StopAsyncIteration
+
+            return _It()
+
+        client.iter_messages = iter_messages
+        client.get_messages = AsyncMock(
+            return_value=[make(i) for i in sorted(history_ids, reverse=True)[:20]]
+        )
+        return client
+
+    def test_backlog_beyond_20_is_not_lost(self, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        processed = []
+
+        async def fake_process(client, ch, msg):
+            processed.append(msg.id)
+
+        monkeypatch.setattr(monitor, "_process_message", fake_process)
+        # 50 unseen messages, ids 101..150
+        client = self._client(list(range(101, 151)))
+        asyncio.run(monitor._poll_one_channel(client, 1, 123, "chan", "t", min_id=100))
+        assert processed == list(range(101, 151)), \
+            "every backlog message must be fetched, oldest first"
+
+    def test_fresh_channel_backfills_newest_20_only(self, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        processed = []
+
+        async def fake_process(client, ch, msg):
+            processed.append(msg.id)
+
+        monkeypatch.setattr(monitor, "_process_message", fake_process)
+        client = self._client(list(range(1, 1001)))  # channel with 1000 posts
+        asyncio.run(monitor._poll_one_channel(client, 1, 123, "chan", "t", min_id=0))
+        assert processed == list(range(981, 1001)), \
+            "a fresh channel must not replay its whole history"
+
+    def test_catchup_is_capped_per_cycle_without_loss(self, monkeypatch):
+        import asyncio
+        from src.userbot import monitor
+
+        processed = []
+
+        async def fake_process(client, ch, msg):
+            processed.append(msg.id)
+
+        monkeypatch.setattr(monitor, "_process_message", fake_process)
+        backlog = list(range(101, 101 + monitor.POLL_MAX_CATCHUP + 30))
+        client = self._client(backlog)
+        asyncio.run(monitor._poll_one_channel(client, 1, 123, "chan", "t", min_id=100))
+        # Capped at POLL_MAX_CATCHUP oldest — the rest stays ABOVE the cursor
+        # for the next cycle instead of being skipped
+        assert processed == backlog[:monitor.POLL_MAX_CATCHUP]

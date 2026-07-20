@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import joinedload
 from telethon import TelegramClient, events
+from telethon.errors import FloodWaitError
 from telethon.tl.types import (
     DocumentAttributeAudio,
     DocumentAttributeFilename,
@@ -30,8 +31,31 @@ from src.services.summarizer import build_digest, summarize
 logger = logging.getLogger(__name__)
 
 _client: TelegramClient | None = None
-POLL_INTERVAL = 30
+
+# Polling pace. One GetHistory request per channel per cycle, SPREAD across the
+# cycle instead of fired back-to-back: a burst of N history requests every 30s
+# from one account is exactly what Telegram flood-limits, and Telethon then
+# silently sleeps inside get_messages — observed in prod as an effective poll
+# period of ~27 MINUTES instead of 30 seconds.
+POLL_INTERVAL = 60
+# Per-channel cap per cycle. Catch-up is paginated oldest-first, so a bigger
+# backlog is NOT lost — the cursor stops at the last processed message and the
+# next cycle continues from there.
+POLL_MAX_CATCHUP = 60
+
 BATCH_WINDOW_SECS = 90
+# A lone post needs no burst window: backfill bursts arrive in one poll batch,
+# so an entry still alone after this grace is a genuine single post.
+SINGLE_POST_GRACE_SECS = 20
+FLUSH_TICK_SECS = 10
+
+# Deliveries run as tasks so one slow media download cannot head-of-line-block
+# every other user's posts. The semaphore caps parallelism; _in_flight keeps
+# per-(user, channel) ordering and lets the SIGTERM flush persist entries that
+# were mid-delivery when the restart hit.
+_DELIVERY_CONCURRENCY = 3
+_delivery_sem = asyncio.Semaphore(_DELIVERY_CONCURRENCY)
+_in_flight: dict[tuple[int, int], dict] = {}
 
 # (tg_id, channel_id) → {"posts": [...], "label": str, "username": str, "first_at": float}
 _batch_buffer: dict[tuple[int, int], dict] = {}
@@ -594,10 +618,10 @@ def _format_batch_message(
 
 
 def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
-    """Persist a buffered batch so a deploy restart can't lose it.
+    """Persist a buffered batch so a restart or send failure can't lose it.
 
-    Only used by the SIGTERM handler; the rows are delivered right after
-    the next startup by _flush_pending().
+    Used by the SIGTERM handler and the delivery-error path; the rows are
+    delivered right after the next startup by _flush_pending().
     """
     db = get_session()
     try:
@@ -650,8 +674,13 @@ def flush_buffer_on_shutdown() -> None:
     Called from the SIGTERM handler — GitHub Actions restarts the bot every
     few hours, and without this the in-memory buffer would be lost.
     """
-    entries = list(_batch_buffer.items())
+    # In-flight entries too: SIGTERM can land mid-delivery, after the entry
+    # left the buffer but before the send finished. pending_posts dedupes by
+    # (telegram_id, post_id), so a delivery that DID complete just before the
+    # snapshot at worst re-queues rows that startup delivery will skip.
+    entries = list(_batch_buffer.items()) + list(_in_flight.items())
     _batch_buffer.clear()
+    _in_flight.clear()
     for (tg_id, channel_id), entry in entries:
         _queue_pending(tg_id, channel_id, entry["posts"])
     if entries:
@@ -663,36 +692,61 @@ def flush_buffer_on_shutdown() -> None:
         logger.info("Shutdown flush: %d metric event(s) persisted", written)
 
 
-async def _batch_flush_loop(client: TelegramClient) -> None:
-    """Every 30s: single posts → deliver as a post; bursts → one summary now."""
-    while True:
-        await asyncio.sleep(30)
-        now = time.monotonic()
-        to_flush = [
-            key for key, entry in list(_batch_buffer.items())
-            if now - entry["first_at"] >= BATCH_WINDOW_SECS
-        ]
-        for key in to_flush:
-            entry = _batch_buffer.pop(key, None)
-            if not entry:
-                continue
-            tg_id, channel_id = key
+def _entry_due(entry: dict, now: float) -> bool:
+    """A burst waits the full window; a lone post only a short grace.
+
+    Backfill bursts (channel add, catch-up) land in the buffer together within
+    one poll batch, so an entry still holding one post after the grace is a
+    genuine single post — waiting the full 90s would only add latency.
+    """
+    age = now - entry["first_at"]
+    if age >= BATCH_WINDOW_SECS:
+        return True
+    return len(entry["posts"]) == 1 and age >= SINGLE_POST_GRACE_SECS
+
+
+async def _deliver_entry(client: TelegramClient, key: tuple[int, int], entry: dict) -> None:
+    tg_id, channel_id = key
+    try:
+        async with _delivery_sem:
             posts = entry["posts"]
-            try:
-                if len(posts) == 1:
-                    p = posts[0]
-                    await _deliver_to_user(
-                        client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"],
-                        username=entry.get("username"),
-                    )
-                else:
-                    await _send_batch_now(tg_id, entry)
-            except Exception as exc:
-                # Transient send failure — persist so the next startup retries,
-                # instead of silently dropping the burst.
-                logger.warning("Batch flush error for user %s: %s — re-queued", tg_id, exc)
-                metrics.record(metrics.ERROR_DELIVERY, f"burst: {exc}")
-                _queue_pending(tg_id, channel_id, posts)
+            if len(posts) == 1:
+                p = posts[0]
+                await _deliver_to_user(
+                    client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"],
+                    username=entry.get("username"),
+                )
+            else:
+                await _send_batch_now(tg_id, entry)
+    except Exception as exc:
+        # Transient send failure — persist so the next startup retries,
+        # instead of silently dropping the burst.
+        logger.warning("Batch flush error for user %s: %s — re-queued", tg_id, exc)
+        metrics.record(metrics.ERROR_DELIVERY, f"burst: {exc}")
+        _queue_pending(tg_id, channel_id, entry["posts"])
+    finally:
+        _in_flight.pop(key, None)
+
+
+async def _batch_flush_loop(client: TelegramClient) -> None:
+    """Flush due buffer entries as delivery tasks.
+
+    Tasks rather than serial awaits: one 20MB media download must not stall
+    every other user's delivery. _in_flight guards per-(user, channel) order —
+    while a key is being delivered, its next entry stays buffered.
+    """
+    while True:
+        await asyncio.sleep(FLUSH_TICK_SECS)
+        now = time.monotonic()
+        for key in list(_batch_buffer.keys()):
+            if key in _in_flight:
+                continue
+            entry = _batch_buffer.get(key)
+            if entry is None or not _entry_due(entry, now):
+                continue
+            _batch_buffer.pop(key, None)
+            _in_flight[key] = entry
+            asyncio.get_running_loop().create_task(_deliver_entry(client, key, entry))
 
 
 async def _flush_pending() -> None:
@@ -1054,9 +1108,36 @@ async def _digest_loop() -> None:
         await _send_daily_digest()
 
 
+async def _poll_one_channel(
+    client: TelegramClient, ch_id: int, tg_channel_id: int,
+    username: str | None, title: str | None, min_id: int,
+) -> None:
+    if min_id > 0:
+        # Oldest-first pagination: EVERYTHING newer than the cursor, capped per
+        # cycle. The old get_messages(limit=20, min_id) returned the NEWEST 20
+        # and the cursor then jumped past the rest — any backlog beyond 20
+        # (routine after a restart gap) was silently lost forever.
+        messages = [
+            m async for m in client.iter_messages(
+                tg_channel_id, min_id=min_id, reverse=True, limit=POLL_MAX_CATCHUP,
+            )
+        ]
+    else:
+        # Freshly added channel (no cursor yet): backfill the newest 20 only —
+        # oldest-first from id 0 would replay the channel's entire history.
+        recent = await client.get_messages(tg_channel_id, limit=20)
+        messages = list(reversed(recent))
+
+    if not messages:
+        return
+    logger.info("Poll @%s: %d new message(s)", username, len(messages))
+    ch_obj = Channel(id=ch_id, telegram_id=tg_channel_id, username=username, title=title)
+    for msg in messages:
+        await _process_message(client, ch_obj, msg)
+
+
 async def _poll_channels(client: TelegramClient) -> None:
     while True:
-        await asyncio.sleep(POLL_INTERVAL)
         db = get_session()
         try:
             channels = db.query(Channel).filter(Channel.telegram_id.isnot(None)).all()
@@ -1067,18 +1148,25 @@ async def _poll_channels(client: TelegramClient) -> None:
         finally:
             db.close()
 
+        if not channel_list:
+            await asyncio.sleep(POLL_INTERVAL)
+            continue
+
+        # Spacing between channels sums to one POLL_INTERVAL per full cycle.
+        spacing = POLL_INTERVAL / len(channel_list)
         for ch_id, tg_channel_id, username, title, min_id in channel_list:
             try:
-                messages = await client.get_messages(tg_channel_id, limit=20, min_id=min_id)
-                if messages:
-                    logger.info("Poll @%s: %d new message(s)", username, len(messages))
-                    ch_obj = Channel(
-                        id=ch_id, telegram_id=tg_channel_id, username=username, title=title
-                    )
-                    for msg in reversed(messages):
-                        await _process_message(client, ch_obj, msg)
+                await _poll_one_channel(client, ch_id, tg_channel_id, username, title, min_id)
+            except FloodWaitError as exc:
+                # Made visible on purpose (flood_sleep_threshold is lowered at
+                # startup): silent in-library sleeps were how a 30s poll turned
+                # into a 27-minute one with nothing in the logs.
+                wait = min(exc.seconds, 300)
+                logger.warning("Flood wait %ss polling @%s — backing off", exc.seconds, username)
+                await asyncio.sleep(wait)
             except Exception as exc:
                 logger.warning("Poll failed for @%s: %s", username, exc)
+            await asyncio.sleep(spacing)
 
 
 def _register_live_handler(client: TelegramClient) -> None:
@@ -1135,6 +1223,11 @@ async def start_userbot() -> TelegramClient:
     else:
         client = TelegramClient(config.SESSION_PATH, config.API_ID, config.API_HASH)
         await client.start(phone=config.PHONE)
+
+    # Short flood waits are slept through; anything longer RAISES so the poll
+    # loop can log and back off. Telethon's default (60s) swallowed every wait
+    # silently — polling degraded to ~27-minute cycles with clean-looking logs.
+    client.flood_sleep_threshold = 10
 
     _register_live_handler(client)
     await _resolve_channels(client)
