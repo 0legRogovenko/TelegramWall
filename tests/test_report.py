@@ -170,3 +170,24 @@ class TestBuildReport:
         db.commit()
         text = build_report(db)  # must not raise
         assert "Отчёт за сутки" in text
+
+
+class TestDeadChannels:
+    def test_unresolvable_channel_is_surfaced(self, db):
+        from src.models import Channel
+        ch = Channel(username="dead_chan_xyz", title="dead", telegram_id=None)
+        db.add(ch)
+        db.commit()
+        text = build_report(db)
+        assert "Каналы без доступа" in text
+        assert "@dead_chan_xyz" in text
+        db.delete(ch)
+        db.commit()
+
+    def test_no_dead_channel_section_when_all_resolve(self, db):
+        from src.models import Channel
+        # Uncommitted update — the db fixture rolls it back after the test
+        db.query(Channel).filter(Channel.telegram_id.is_(None)).update(
+            {Channel.telegram_id: 424242}, synchronize_session=False
+        )
+        assert "Каналы без доступа" not in build_report(db)

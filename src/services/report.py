@@ -90,6 +90,11 @@ def build_report(db) -> str:
         .first()
     )
 
+    # Channels whose username no longer resolves: they are excluded from
+    # polling, so their subscribers silently receive nothing. Surface them —
+    # this is invisible everywhere else.
+    dead_channels = db.query(Channel).filter(Channel.telegram_id.is_(None)).all()
+
     # Money
     paid_subs = db.query(Subscription).filter(
         Subscription.expires_at > now, Subscription.stars_paid > 0
@@ -123,6 +128,16 @@ def build_report(db) -> str:
     # number if someone points CLAUDE_MODEL somewhere else.
     if not config.CLAUDE_MODEL.startswith("claude-haiku"):
         lines.append(f"  <i>⚠️ сумма посчитана по ценам Haiku, модель: {config.CLAUDE_MODEL}</i>")
+
+    if dead_channels:
+        names = ", ".join(f"@{html.escape(c.username or '?')}" for c in dead_channels[:10])
+        more = f" и ещё {len(dead_channels) - 10}" if len(dead_channels) > 10 else ""
+        lines += [
+            "",
+            f"<b>🚫 Каналы без доступа: {len(dead_channels)}</b>",
+            f"  {names}{more}",
+            "  <i>username не резолвится — посты из них никому не приходят</i>",
+        ]
 
     if err_total:
         lines += ["", f"<b>⚠️ Ошибки: {err_total}</b>"]
