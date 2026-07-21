@@ -20,8 +20,8 @@ from telethon.tl.types import (
     UpdateNewChannelMessage,
 )
 
-from src.bot.i18n import count_new_posts, lang_of, t
-from src.bot.keyboards import SEP, summary_button
+from src.bot.i18n import lang_of, t
+from src.bot.keyboards import summary_button
 from src.config import config
 from src.database import get_session
 from src.models import BotEvent, BotHealth, Channel, PendingPost, Post, User, UserChannel
@@ -43,10 +43,11 @@ POLL_INTERVAL = 60
 # next cycle continues from there.
 POLL_MAX_CATCHUP = 60
 
-BATCH_WINDOW_SECS = 90
-# A lone post needs no burst window: backfill bursts arrive in one poll batch,
-# so an entry still alone after this grace is a genuine single post.
-SINGLE_POST_GRACE_SECS = 20
+# Every post is delivered as its own message (no burst summaries — users
+# explicitly preferred separate posts). The short grace lets an album caption
+# that rides on a later item attach before its post leaves the buffer;
+# PTB's AIORateLimiter paces the sends when a backfill produces many at once.
+DELIVERY_GRACE_SECS = 20
 FLUSH_TICK_SECS = 10
 
 # Deliveries run as tasks so one slow media download cannot head-of-line-block
@@ -598,25 +599,6 @@ async def _send_summary(
         return False
 
 
-def _format_batch_message(
-    label: str, username: str, posts: list[dict], lang: str = "ru"
-) -> str:
-    """Summary message for several posts from one channel.
-
-    posts: [{"post_id": int, "text": str}]
-    """
-    n = len(posts)
-    lines = [t("batch_header", lang, label=html.escape(label),
-               phrase=count_new_posts(n, lang))]
-    for i, p in enumerate(posts, 1):
-        preview = html.escape((p["text"] or "[media]")[:120])
-        if len(p["text"] or "") > 120:
-            preview += "…"
-        lines.append(f"{SEP}\n{i}. {preview}\n/summary_{p['post_id']}")
-    lines.append(f"{SEP}\n" + t("open_channel", lang, u=username))
-    return "\n\n".join(lines)
-
-
 def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
     """Persist a buffered batch so a restart or send failure can't lose it.
 
@@ -641,31 +623,6 @@ def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> None:
         db.rollback()
     finally:
         db.close()
-
-
-async def _send_batch_now(tg_id: int, entry: dict) -> None:
-    """Deliver a multi-post burst as one combined summary message."""
-    from src.bot.app import ptb_app
-    if ptb_app is None:
-        return
-    db = get_session()
-    try:
-        lang = _user_lang(db, tg_id)
-    finally:
-        db.close()
-    text = _format_batch_message(
-        entry["label"], entry["username"],
-        [{"post_id": p["post_id"], "text": p["text"]} for p in entry["posts"]],
-        lang,
-    )
-    for chunk in _split_message(text):
-        await ptb_app.bot.send_message(
-            chat_id=tg_id, text=chunk, parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-    logger.info("✅ Burst (%d posts) from %s → user %s",
-                len(entry["posts"]), entry["label"], tg_id)
-    metrics.record(metrics.DELIVERED_BURST, f'{len(entry["posts"])} posts')
 
 
 def flush_buffer_on_shutdown() -> None:
@@ -693,37 +650,29 @@ def flush_buffer_on_shutdown() -> None:
 
 
 def _entry_due(entry: dict, now: float) -> bool:
-    """A burst waits the full window; a lone post only a short grace.
-
-    Backfill bursts (channel add, catch-up) land in the buffer together within
-    one poll batch, so an entry still holding one post after the grace is a
-    genuine single post — waiting the full 90s would only add latency.
-    """
-    age = now - entry["first_at"]
-    if age >= BATCH_WINDOW_SECS:
-        return True
-    return len(entry["posts"]) == 1 and age >= SINGLE_POST_GRACE_SECS
+    return now - entry["first_at"] >= DELIVERY_GRACE_SECS
 
 
 async def _deliver_entry(client: TelegramClient, key: tuple[int, int], entry: dict) -> None:
+    """Deliver every buffered post individually, oldest first."""
     tg_id, channel_id = key
+    posts = entry["posts"]
     try:
         async with _delivery_sem:
-            posts = entry["posts"]
-            if len(posts) == 1:
-                p = posts[0]
-                await _deliver_to_user(
-                    client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"],
-                    username=entry.get("username"),
-                )
-            else:
-                await _send_batch_now(tg_id, entry)
-    except Exception as exc:
-        # Transient send failure — persist so the next startup retries,
-        # instead of silently dropping the burst.
-        logger.warning("Batch flush error for user %s: %s — re-queued", tg_id, exc)
-        metrics.record(metrics.ERROR_DELIVERY, f"burst: {exc}")
-        _queue_pending(tg_id, channel_id, entry["posts"])
+            for i, p in enumerate(posts):
+                try:
+                    await _deliver_to_user(
+                        client, tg_id, p["msg"], entry["label"], p["post_id"], p["text"],
+                        username=entry.get("username"),
+                    )
+                except Exception as exc:
+                    # Persist the UNDELIVERED tail for the next startup; what
+                    # already went out must not be re-sent.
+                    logger.warning("Delivery error for user %s: %s — re-queued %d post(s)",
+                                   tg_id, exc, len(posts) - i)
+                    metrics.record(metrics.ERROR_DELIVERY, str(exc))
+                    _queue_pending(tg_id, channel_id, posts[i:])
+                    return
     finally:
         _in_flight.pop(key, None)
 
@@ -749,8 +698,14 @@ async def _batch_flush_loop(client: TelegramClient) -> None:
             asyncio.get_running_loop().create_task(_deliver_entry(client, key, entry))
 
 
-async def _flush_pending() -> None:
-    """Deliver all queued multi-post batches, grouped by user + channel."""
+async def _flush_pending(client: TelegramClient | None = None) -> None:
+    """Deliver queued posts left over from a restart — each as its own message.
+
+    The original Telethon message is re-fetched when possible so media and the
+    date survive the restart; a message that is gone (deleted, channel lost)
+    falls back to the stored text with a header link, or is dropped if there
+    is nothing sensible left to send.
+    """
     from src.bot.app import ptb_app
     if ptb_app is None:
         return
@@ -770,11 +725,10 @@ async def _flush_pending() -> None:
             groups.setdefault((r.telegram_id, r.channel_id), []).append(r.post_id)
 
         for (tg_id, channel_id), post_ids in groups.items():
-            def _drop_rows():
+            def _drop_row(pid):
                 db.query(PendingPost).filter(
                     PendingPost.telegram_id == tg_id,
-                    PendingPost.channel_id == channel_id,
-                    PendingPost.post_id.in_(post_ids),
+                    PendingPost.post_id == pid,
                 ).delete(synchronize_session=False)
                 db.commit()
 
@@ -785,30 +739,49 @@ async def _flush_pending() -> None:
                 .order_by(Post.id)
                 .all()
             )
-            # Nothing left to send (channel gone or posts purged) — drop the
-            # stale rows so they don't linger or produce an empty message.
             if not channel or not posts:
-                _drop_rows()
+                for pid in post_ids:
+                    _drop_row(pid)
                 continue
 
             label = channel.title or f"@{channel.username}"
-            text = _format_batch_message(
-                label, channel.username,
-                [{"post_id": p.id, "text": p.text or ""} for p in posts],
-                lang=_user_lang(db, tg_id),
-            )
-            try:
-                for chunk in _split_message(text):
-                    await ptb_app.bot.send_message(
-                        chat_id=tg_id, text=chunk, parse_mode="HTML",
-                        disable_web_page_preview=True,
-                    )
-                _drop_rows()
-                logger.info("✅ Delivered persisted batch (%d posts) @%s → user %s",
-                            len(posts), channel.username, tg_id)
-            except Exception as exc:
-                db.rollback()
-                logger.warning("Cannot send persisted batch to user %s: %s", tg_id, exc)
+            lang = _user_lang(db, tg_id)
+            for post in posts:
+                msg = None
+                if client is not None and channel.telegram_id:
+                    try:
+                        msg = await client.get_messages(
+                            channel.telegram_id, ids=post.message_id
+                        )
+                    except Exception as exc:
+                        logger.debug("Cannot refetch msg %s of @%s: %s",
+                                     post.message_id, channel.username, exc)
+                try:
+                    if msg is not None:
+                        await _deliver_to_user(
+                            client, tg_id, msg, label, post.id, post.text or "",
+                            username=channel.username,
+                        )
+                    elif post.text:
+                        url = f"https://t.me/{channel.username}/{post.message_id}"
+                        header = (f'\U0001F4E2 <b><a href="{url}">'
+                                  f'{html.escape(label)}</a></b>')
+                        await ptb_app.bot.send_message(
+                            chat_id=tg_id,
+                            text=(f"{header}\n\n{html.escape(post.text)}"
+                                  f"\n\n<i>#{post.id}</i>"),
+                            parse_mode="HTML",
+                            disable_web_page_preview=True,
+                            reply_markup=summary_button(post.id, lang),
+                        )
+                        metrics.record(metrics.DELIVERED_POST)
+                    # media-only post whose message is gone: nothing to send
+                    _drop_row(post.id)
+                except Exception as exc:
+                    db.rollback()
+                    logger.warning("Cannot deliver persisted post #%s to user %s: %s",
+                                   post.id, tg_id, exc)
+                    # row stays — the next startup retries
     finally:
         db.close()
 
@@ -1242,7 +1215,7 @@ async def start_userbot() -> TelegramClient:
         # cleanup skips pending-referenced posts anyway, but flushing first
         # gets the user their posts promptly and empties the queue.
         try:
-            await _flush_pending()
+            await _flush_pending(client)
         except Exception as exc:
             logger.warning("Startup flush failed: %s", exc)
         await asyncio.to_thread(_run_cleanup_once)

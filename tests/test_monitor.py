@@ -447,27 +447,21 @@ class TestFileIdCacheInvalidation:
 
 
 class TestFlushTiming:
-    """_entry_due: bursts wait the full window, lone posts only a short grace."""
+    """_entry_due: every entry flushes after the same short grace — posts are
+    always delivered individually, so no burst window exists anymore."""
 
     def _entry(self, n_posts, age):
         import time
         return {"posts": [{"post_id": i} for i in range(n_posts)],
                 "first_at": time.monotonic() - age}
 
-    def test_single_post_flushes_after_grace(self):
+    def test_entry_flushes_after_grace_regardless_of_size(self):
         import time
-        from src.userbot.monitor import SINGLE_POST_GRACE_SECS, _entry_due
+        from src.userbot.monitor import DELIVERY_GRACE_SECS, _entry_due
         now = time.monotonic()
-        assert not _entry_due(self._entry(1, SINGLE_POST_GRACE_SECS - 5), now)
-        assert _entry_due(self._entry(1, SINGLE_POST_GRACE_SECS + 1), now)
-
-    def test_burst_waits_the_full_window(self):
-        import time
-        from src.userbot.monitor import BATCH_WINDOW_SECS, _entry_due
-        now = time.monotonic()
-        # Two posts: the grace path must NOT apply
-        assert not _entry_due(self._entry(2, BATCH_WINDOW_SECS - 5), now)
-        assert _entry_due(self._entry(2, BATCH_WINDOW_SECS + 1), now)
+        for n in (1, 5):
+            assert not _entry_due(self._entry(n, DELIVERY_GRACE_SECS - 5), now)
+            assert _entry_due(self._entry(n, DELIVERY_GRACE_SECS + 1), now)
 
 
 class TestPollPagination:
