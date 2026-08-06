@@ -39,6 +39,13 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text(t("add_need_at", lang), parse_mode="HTML")
             return
 
+        from src.services.blocklist import is_blocked
+        if is_blocked(db, username):
+            await update.message.reply_text(
+                t("add_blocked", lang, username=username), parse_mode="HTML"
+            )
+            return
+
         active_count = db.query(UserChannel).filter_by(user_id=user.id, is_active=True).count()
         limit = user.channel_limit
         if limit is not None and active_count >= limit:

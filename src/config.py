@@ -74,6 +74,13 @@ class Config:
     # Bot API caps uploads at 50 MB anyway; the userbot downloads into memory,
     # so keep this modest.
     MEDIA_MAX_MB: int = int(os.getenv("MEDIA_MAX_MB", "20"))
+    # Channels the bot refuses to monitor (comma-separated usernames, no @).
+    # Which sources are legally risky to redistribute is the operator's call;
+    # admins can extend this at runtime with /block.
+    BLOCKED_CHANNELS: frozenset = frozenset(
+        u.strip().lstrip("@").lower()
+        for u in os.getenv("BLOCKED_CHANNELS", "").split(",") if u.strip()
+    )
     # Daily ops report to ADMIN_IDS. Default 7 UTC = 10:00 MSK.
     ADMIN_REPORT_HOUR_UTC: int = int(os.getenv("ADMIN_REPORT_HOUR_UTC", "7"))
     # HEARTBEAT_STALE_MINUTES lives in scripts/healthcheck.py — the watchdog runs

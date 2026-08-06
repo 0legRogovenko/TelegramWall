@@ -530,6 +530,13 @@ T = {
 
     "btn_summary": {"ru": "📝 Саммари", "en": "📝 Summary", "es": "📝 Resumen"},
 
+    # Channel is on the operator's blocklist (legal/editorial)
+    "add_blocked": {
+        "ru": "🚫 Канал @{username} недоступен в этом боте.",
+        "en": "🚫 Channel @{username} is not available in this bot.",
+        "es": "🚫 El canal @{username} no está disponible en este bot.",
+    },
+
     # Post whose content the bot cannot re-send (oversized media, failed
     # download, poll, etc.) — the header above it links to the original.
     "media_fallback": {

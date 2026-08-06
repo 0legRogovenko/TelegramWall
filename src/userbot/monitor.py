@@ -1113,10 +1113,13 @@ async def _poll_channels(client: TelegramClient) -> None:
     while True:
         db = get_session()
         try:
+            from src.services.blocklist import blocked_usernames
+            blocked = blocked_usernames(db)
             channels = db.query(Channel).filter(Channel.telegram_id.isnot(None)).all()
             channel_list = [
                 (ch.id, ch.telegram_id, ch.username, ch.title, ch.last_message_id or 0)
                 for ch in channels
+                if (ch.username or "").lower() not in blocked
             ]
         finally:
             db.close()

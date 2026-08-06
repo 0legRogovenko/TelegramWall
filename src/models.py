@@ -165,6 +165,21 @@ class PendingPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class BlockedChannel(Base):
+    """Channels the bot refuses to monitor or redistribute.
+
+    Operator-curated: redistribution of some sources carries legal risk, and
+    which sources those are is an editorial/legal judgement, not code's. The
+    static part comes from config.BLOCKED_CHANNELS; admins manage the rest
+    with /block and /unblock at runtime.
+    """
+    __tablename__ = "blocked_channels"
+
+    username: Mapped[str] = mapped_column(String(255), primary_key=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class BotEvent(Base):
     """Append-only operational log — the source of the daily admin report.
 

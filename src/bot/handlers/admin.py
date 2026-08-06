@@ -110,3 +110,46 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     with db_session() as db:
         text = build_report(db)
     await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def cmd_block(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Block a channel from being monitored: /block @username [причина]."""
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return
+    from src.services import blocklist
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: /block @канал [причина]\n"
+            "Заблокированный канал нельзя добавить, опрос по нему остановится."
+        )
+        return
+    username = context.args[0].lstrip("@")
+    reason = " ".join(context.args[1:]) or None
+    with db_session() as db:
+        added = blocklist.block(db, username, reason)
+        names = sorted(blocklist.blocked_usernames(db))
+    status = "заблокирован" if added else "уже был в списке"
+    listing = "\n".join(f"  · @{n}" for n in names) or "  (пусто)"
+    await update.message.reply_text(
+        f"🚫 @{username} {status}.\n\nЧёрный список:\n{listing}"
+    )
+
+
+async def cmd_unblock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove a channel from the runtime blocklist: /unblock @username."""
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return
+    from src.services import blocklist
+    if not context.args:
+        await update.message.reply_text("Использование: /unblock @канал")
+        return
+    username = context.args[0].lstrip("@")
+    with db_session() as db:
+        removed = blocklist.unblock(db, username)
+    if removed:
+        await update.message.reply_text(f"✅ @{username} разблокирован.")
+    else:
+        await update.message.reply_text(
+            f"@{username} не в списке (либо закреплён через BLOCKED_CHANNELS "
+            "в окружении — такие снимаются только правкой секрета)."
+        )
