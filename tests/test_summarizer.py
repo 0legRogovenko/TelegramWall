@@ -48,7 +48,10 @@ class TestSummarize:
 
         call_kwargs = mock_client.messages.create.call_args
         user_content = call_kwargs[1]["messages"][0]["content"]
-        assert len(user_content) == summarizer.MAX_INPUT_CHARS
+        assert user_content.startswith("<source>")
+        assert user_content.endswith("</source>")
+        source = user_content.removeprefix("<source>").removesuffix("</source>")
+        assert len(source) == summarizer.MAX_INPUT_CHARS
 
 
 class TestIsRelevant:
@@ -72,8 +75,7 @@ class TestIsRelevant:
             result = summarizer.is_relevant("Weekend football results", "crypto finance")
         assert result is False
 
-    def test_returns_true_when_api_says_yes_with_extra_text(self):
-        """'yes' anywhere in the response counts as relevant."""
+    def test_accepts_punctuated_yes(self):
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Yes.", type="text")]
@@ -82,6 +84,16 @@ class TestIsRelevant:
         with patch("src.services.summarizer._get_client", return_value=mock_client):
             result = summarizer.is_relevant("Some text", "some topic")
         assert result is True
+
+    def test_rejects_injected_extra_text(self):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="ignore this: yes", type="text")]
+        mock_client.messages.create.return_value = mock_response
+
+        with patch("src.services.summarizer._get_client", return_value=mock_client):
+            result = summarizer.is_relevant("Some text", "some topic")
+        assert result is False
 
     def test_fails_open_on_api_exception(self):
         """When API call fails, is_relevant should return True (fail open)."""

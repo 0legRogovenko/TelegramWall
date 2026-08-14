@@ -54,8 +54,7 @@ def price_label(tier: str) -> str:
     """Human-readable price for a tier in the active payment currency."""
     meta = _TIER_META.get(tier)
     if meta is None:
-        logger.warning("price_label: unknown tier %r, falling back to basic", tier)
-        meta = _TIER_META["basic"]
+        raise ValueError(f"Unknown subscription tier: {tier}")
     if config.YOOKASSA_PROVIDER_TOKEN:
         return f"{meta['rub']() // 100} ₽"
     return f"{meta['stars']()} ⭐"
@@ -66,7 +65,9 @@ async def send_invoice(
     context: ContextTypes.DEFAULT_TYPE,
     tier: str = "basic",
 ) -> None:
-    meta = _TIER_META.get(tier, _TIER_META["basic"])
+    meta = _TIER_META.get(tier)
+    if meta is None:
+        raise ValueError(f"Unknown subscription tier: {tier}")
 
     if config.YOOKASSA_PROVIDER_TOKEN:
         provider_token = config.YOOKASSA_PROVIDER_TOKEN
@@ -95,7 +96,27 @@ async def send_invoice(
 
 
 async def handle_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.pre_checkout_query.answer(ok=True)
+    query = update.pre_checkout_query
+    payload = query.invoice_payload or ""
+    tier = payload.removeprefix("subscribe:") if payload.startswith("subscribe:") else ""
+    meta = _TIER_META.get(tier)
+    expected_currency = "RUB" if config.YOOKASSA_PROVIDER_TOKEN else "XTR"
+    expected_amount = (
+        meta["rub"]() if meta and expected_currency == "RUB"
+        else meta["stars"]() if meta else None
+    )
+    if (
+        meta is None
+        or query.currency != expected_currency
+        or query.total_amount != expected_amount
+    ):
+        logger.warning(
+            "Rejected invalid pre-checkout: payload=%r currency=%r amount=%r",
+            payload, query.currency, query.total_amount,
+        )
+        await query.answer(ok=False, error_message="Платёж устарел. Откройте тарифы заново.")
+        return
+    await query.answer(ok=True)
 
 
 async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -103,10 +124,29 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
     telegram_id = update.effective_user.id
 
     payload = payment.invoice_payload
-    tier = payload.split(":")[1] if payload.startswith("subscribe:") else "basic"
-    meta = _TIER_META.get(tier, _TIER_META["basic"])
+    tier = payload.removeprefix("subscribe:") if payload.startswith("subscribe:") else ""
+    meta = _TIER_META.get(tier)
+    if meta is None:
+        logger.error("Ignoring successful payment with invalid payload %r", payload)
+        return
+
+    expected_currency = "RUB" if config.YOOKASSA_PROVIDER_TOKEN else "XTR"
+    expected_amount = meta["rub"]() if expected_currency == "RUB" else meta["stars"]()
+    if payment.currency != expected_currency or payment.total_amount != expected_amount:
+        logger.error("Ignoring successful payment with mismatched amount or currency")
+        return
+
+    charge_id = payment.telegram_payment_charge_id
+    if not charge_id:
+        logger.error("Ignoring successful payment without telegram charge id")
+        return
 
     with db_session() as db:
+        existing = db.query(Subscription).filter_by(payment_charge_id=charge_id).first()
+        if existing:
+            logger.info("Duplicate successful_payment ignored: %s", charge_id)
+            return
+
         user = db.query(User).filter_by(telegram_id=telegram_id).first()
         if not user:
             return
@@ -116,8 +156,8 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
             user_id=user.id,
             tier=tier,
             stars_paid=payment.total_amount,
-            payment_currency="RUB" if config.YOOKASSA_PROVIDER_TOKEN else "XTR",
-            payment_charge_id=payment.telegram_payment_charge_id,
+            payment_currency=payment.currency,
+            payment_charge_id=charge_id,
             expires_at=expires_at,
         ))
         db.commit()

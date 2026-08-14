@@ -1,5 +1,6 @@
 """AI features: /summary, /digest, /autosummary."""
 import asyncio
+import html
 import re
 
 from telegram import Update
@@ -10,7 +11,7 @@ from src.bot.i18n import lang_of, t
 from src.bot.keyboards import digest_keyboard, subscribe_keyboard
 from src.config import config
 from src.database import db_session
-from src.models import Post
+from src.services.ai_access import authorized_post, claim_summary_request
 from src.services.summarizer import summarize
 
 
@@ -35,7 +36,7 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text(t("sum_bad_id", lang))
             return
 
-        post = db.query(Post).filter_by(id=post_id).first()
+        post = authorized_post(db, user, post_id)
         if not post:
             await update.message.reply_text(
                 t("sum_not_found", lang, id=post_id), parse_mode="HTML"
@@ -47,7 +48,14 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if post.summary:
             await update.message.reply_text(
-                t("sum_header", lang, id=post_id, text=post.summary),
+                t("sum_header", lang, id=post_id, text=html.escape(post.summary)),
+                parse_mode="HTML",
+            )
+            return
+
+        if not claim_summary_request(db, user):
+            await update.message.reply_text(
+                t("sum_quota", lang, limit=config.AI_DAILY_SUMMARY_LIMIT),
                 parse_mode="HTML",
             )
             return
@@ -59,11 +67,13 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             post.summary = summary_text
             db.commit()
             await msg.edit_text(
-                t("sum_header", lang, id=post_id, text=summary_text),
+                t("sum_header", lang, id=post_id, text=html.escape(summary_text)),
                 parse_mode="HTML",
             )
         except Exception as exc:
-            await msg.edit_text(t("sum_error", lang, err=exc), parse_mode="HTML")
+            await msg.edit_text(
+                t("sum_error", lang, err=html.escape(str(exc))), parse_mode="HTML"
+            )
 
 
 async def cmd_autosummary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

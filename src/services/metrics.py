@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 # Event types (kept short — they are grouped/counted in the daily report)
 POST_SAVED = "post_saved"
 DELIVERED_POST = "delivered_post"
-DELIVERED_BURST = "delivered_burst"
 DELIVERED_SUMMARY = "delivered_summary"
 AI_SUMMARY = "ai_summary"
 AI_DIGEST = "ai_digest"

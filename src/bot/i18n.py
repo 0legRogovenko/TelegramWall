@@ -10,7 +10,9 @@ def lang_of(user) -> str:
 
 
 def t(key: str, lang: str, **kw) -> str:
-    entry = T[key]
+    entry = T.get(key)
+    if entry is None:
+        return key
     template = entry.get(lang) or entry[DEFAULT_LANG]
     return template.format(**kw) if kw else template
 
@@ -416,6 +418,11 @@ T = {
     "sum_header":    {"ru": "📝 <b>Саммари #{id}</b>\n\n{text}", "en": "📝 <b>Summary #{id}</b>\n\n{text}", "es": "📝 <b>Resumen #{id}</b>\n\n{text}"},
     "sum_generating": {"ru": "⏳ Генерирую саммари…", "en": "⏳ Generating summary…", "es": "⏳ Generando resumen…"},
     "sum_error":     {"ru": "❌ <b>Ошибка:</b> {err}", "en": "❌ <b>Error:</b> {err}", "es": "❌ <b>Error:</b> {err}"},
+    "sum_quota": {
+        "ru": "⚠️ Дневной лимит саммари исчерпан ({limit}). Попробуйте завтра.",
+        "en": "⚠️ Your daily summary limit ({limit}) is reached. Try again tomorrow.",
+        "es": "⚠️ Alcanzaste el límite diario de resúmenes ({limit}). Inténtalo mañana.",
+    },
 
     # Digest
     "digest_unavailable": {

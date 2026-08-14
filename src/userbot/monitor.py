@@ -23,7 +23,7 @@ from telethon.tl.types import (
 from src.bot.i18n import lang_of, t
 from src.bot.keyboards import summary_button
 from src.config import config
-from src.database import get_session
+from src.database import db_session, get_session
 from src.models import BotEvent, BotHealth, Channel, PendingPost, Post, User, UserChannel
 from src.services import metrics
 from src.services.summarizer import build_digest, summarize
@@ -79,9 +79,15 @@ def _caption_text_budget(header: str, post_id: int) -> int:
     Telegram counts visible (parsed) characters, so tags are stripped.
     A margin absorbs entity unescaping and emoji counting as two UTF-16 units.
     """
-    visible_header = re.sub(r"<[^>]+>", "", header)
+    visible_header = html.unescape(re.sub(r"<[^>]+>", "", header))
     overhead = len(visible_header) + len(f"#{post_id}") + 4  # two "\n\n" joints
     return min(_CAPTION_TEXT_BUDGET, 1024 - overhead - 20)
+
+
+def _caption_fits(caption: str) -> bool:
+    """Whether an HTML caption fits Telegram's 1024-visible-character limit."""
+    visible = html.unescape(re.sub(r"<[^>]+>", "", caption))
+    return len(visible) <= 1000  # margin for emoji counted as UTF-16 pairs
 
 
 def _get_media_type(message) -> str | None:
@@ -304,49 +310,48 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
 
     grouped_id = getattr(msg, "grouped_id", None)
 
-    db = get_session()
     try:
-        existing = db.query(Post).filter_by(channel_id=channel.id, message_id=msg.id).first()
-        if existing:
-            return
-
-        # Albums: one Post per grouped_id, the rest absorbed into it. The
-        # check hits the DB rather than an in-memory map so an album spanning
-        # a restart is not split into two posts and delivered twice.
-        if grouped_id:
-            head = (
-                db.query(Post)
-                .filter_by(channel_id=channel.id, grouped_id=grouped_id)
-                .order_by(Post.message_id)
-                .first()
-            )
-            if head is not None:
-                _absorb_album_sibling(db, channel.id, msg, head)
+        with db_session() as db:
+            existing = db.query(Post).filter_by(
+                channel_id=channel.id, message_id=msg.id
+            ).first()
+            if existing:
                 return
 
-        text = msg.message or ""
-        media_type = _get_media_type(msg)
-        channel_label = channel.title or f"@{channel.username}"
-        subscriber_ids = _get_eligible_subscribers(db, channel.id, text)
+            # Albums: one Post per grouped_id, the rest absorbed into it. The
+            # check hits the DB rather than an in-memory map so an album spanning
+            # a restart is not split into two posts and delivered twice.
+            if grouped_id:
+                head = (
+                    db.query(Post)
+                    .filter_by(channel_id=channel.id, grouped_id=grouped_id)
+                    .order_by(Post.message_id)
+                    .first()
+                )
+                if head is not None:
+                    _absorb_album_sibling(db, channel.id, msg, head)
+                    return
 
-        post = Post(
-            channel_id=channel.id, message_id=msg.id, text=text,
-            media_type=media_type, grouped_id=grouped_id,
-        )
-        db.add(post)
-        db.flush()
-        post_id = post.id
-        ch_row = db.query(Channel).filter_by(id=channel.id).first()
-        if ch_row and (ch_row.last_message_id or 0) < msg.id:
-            ch_row.last_message_id = msg.id
-        db.commit()
-        db.close()
+            text = msg.message or ""
+            media_type = _get_media_type(msg)
+            channel_label = channel.title or f"@{channel.username}"
+            subscriber_ids = _get_eligible_subscribers(db, channel.id, text)
+
+            post = Post(
+                channel_id=channel.id, message_id=msg.id, text=text,
+                media_type=media_type, grouped_id=grouped_id,
+            )
+            db.add(post)
+            db.flush()
+            post_id = post.id
+            ch_row = db.query(Channel).filter_by(id=channel.id).first()
+            if ch_row and (ch_row.last_message_id or 0) < msg.id:
+                ch_row.last_message_id = msg.id
+            db.commit()
         metrics.record(metrics.POST_SAVED)
 
     except Exception as exc:
         logger.exception("Error saving post msg_id=%s: %s", msg.id, exc)
-        db.rollback()
-        db.close()
         return
 
     if not subscriber_ids:
@@ -556,7 +561,7 @@ async def _send_summary(
     # Summaries are capped at ~250 tokens, so the caption limit is rarely an
     # issue — but a long channel label plus a wordy summary can still cross
     # 1024 visible chars, and then the whole send would fail.
-    if media_kind and len(channel_label) + len(post.summary) > 950:
+    if media_kind and not _caption_fits(body):
         media_kind = None
     if media_kind:
         media = _media_file_ids.get(post_id)
@@ -1115,7 +1120,16 @@ async def _poll_channels(client: TelegramClient) -> None:
         try:
             from src.services.blocklist import blocked_usernames
             blocked = blocked_usernames(db)
-            channels = db.query(Channel).filter(Channel.telegram_id.isnot(None)).all()
+            channels = (
+                db.query(Channel)
+                .join(UserChannel)
+                .filter(
+                    Channel.telegram_id.isnot(None),
+                    UserChannel.is_active.is_(True),
+                )
+                .distinct()
+                .all()
+            )
             channel_list = [
                 (ch.id, ch.telegram_id, ch.username, ch.title, ch.last_message_id or 0)
                 for ch in channels

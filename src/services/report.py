@@ -55,7 +55,6 @@ def build_report(db) -> str:
     # Content
     posts_saved = count(metrics.POST_SAVED)
     delivered = count(metrics.DELIVERED_POST)
-    bursts = count(metrics.DELIVERED_BURST)
     summaries_sent = count(metrics.DELIVERED_SUMMARY)
     pending = db.query(PendingPost).count()
     total_channels = db.query(Channel).count()
@@ -116,7 +115,7 @@ def build_report(db) -> str:
         SEP,
         "<b>Контент</b>",
         f"  📥 Новых постов собрано: <b>{posts_saved}</b>",
-        f"  📤 Доставлено: {delivered} поштучно  ·  {bursts} сводок  ·  {summaries_sent} саммари",
+        f"  📤 Доставлено: {delivered} постов  ·  {summaries_sent} саммари",
         f"  📢 Каналов в базе: {total_channels}  ·  📦 в очереди: {pending}",
         "",
         "<b>AI</b>",

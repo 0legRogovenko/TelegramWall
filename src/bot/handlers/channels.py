@@ -1,5 +1,6 @@
 """Channel management: /add_channel, /channels, /remove_channel, /filter."""
 import asyncio
+import html
 import re
 
 from telegram import Update
@@ -182,7 +183,7 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # Show current filter
         if not rest:
-            ai = f"<code>{uc.ai_filter}</code>" if uc.ai_filter else "—"
+            ai = f"<code>{html.escape(uc.ai_filter)}</code>" if uc.ai_filter else "—"
             await update.message.reply_text(
                 t("flt_show", lang, username=username, ai=ai),
                 parse_mode="HTML",
@@ -208,7 +209,7 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         uc.ai_filter = " ".join(rest)
         db.commit()
         await update.message.reply_text(
-            t("flt_ai_set", lang, username=username, ai=uc.ai_filter),
+            t("flt_ai_set", lang, username=username, ai=html.escape(uc.ai_filter)),
             parse_mode="HTML",
         )
 

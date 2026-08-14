@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, DateTime, ForeignKey,
-    Integer, String, Text, UniqueConstraint,
+    Index, Integer, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -33,6 +33,8 @@ class User(Base):
     quiet_end: Mapped[int | None] = mapped_column(Integer)     # UTC hour 0-23
     referral_code: Mapped[str | None] = mapped_column(String(32), unique=True)
     referred_by: Mapped[int | None] = mapped_column(Integer)   # user.id of referrer
+    ai_usage_date: Mapped[str | None] = mapped_column(String(10))
+    ai_usage_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     subscriptions: Mapped[list["Subscription"]] = relationship(
@@ -227,3 +229,13 @@ class Subscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped["User"] = relationship(back_populates="subscriptions")
+
+    __table_args__ = (
+        Index(
+            "uq_subscriptions_payment_charge_id",
+            payment_charge_id,
+            unique=True,
+            postgresql_where=payment_charge_id.is_not(None),
+            sqlite_where=payment_charge_id.is_not(None),
+        ),
+    )

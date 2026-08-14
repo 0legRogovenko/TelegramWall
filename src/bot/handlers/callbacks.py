@@ -1,4 +1,5 @@
 """Inline keyboard callback handler."""
+import html
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -17,8 +18,10 @@ from src.bot.keyboards import (
     user_channels_keyboard,
 )
 from src.bot.payments import send_invoice
+from src.config import config
 from src.database import db_session
-from src.models import Post, UserChannel
+from src.models import UserChannel
+from src.services.ai_access import authorized_post, claim_summary_request
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -163,14 +166,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             if not user.can_summary:
                 await query.answer(t("pro_only_alert", lang), show_alert=True)
                 return
-            post = db.query(Post).filter_by(id=post_id).first()
+            post = authorized_post(db, user, post_id)
             if not post or not post.text:
                 await query.answer(t("sum_no_text", lang), show_alert=True)
                 return
             if post.summary:
                 await query.message.reply_text(
-                    t("sum_header", lang, id=post_id, text=post.summary),
+                    t("sum_header", lang, id=post_id, text=html.escape(post.summary)),
                     parse_mode="HTML",
+                )
+                return
+            if not claim_summary_request(db, user):
+                await query.answer(
+                    t("sum_quota", lang, limit=config.AI_DAILY_SUMMARY_LIMIT),
+                    show_alert=True,
                 )
                 return
             msg = await query.message.reply_text(t("sum_generating", lang))
@@ -179,11 +188,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 post.summary = summary_text
                 db.commit()
                 await msg.edit_text(
-                    t("sum_header", lang, id=post_id, text=summary_text),
+                    t("sum_header", lang, id=post_id, text=html.escape(summary_text)),
                     parse_mode="HTML",
                 )
             except Exception as exc:
-                await msg.edit_text(t("sum_error", lang, err=exc), parse_mode="HTML")
+                await msg.edit_text(
+                    t("sum_error", lang, err=html.escape(str(exc))), parse_mode="HTML"
+                )
 
     elif data.startswith("toggle_uc:"):
         uc_id = int(data.split(":")[1])

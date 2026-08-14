@@ -1,5 +1,6 @@
 """Flask app + PTB Application setup."""
 import asyncio
+import hmac
 import json
 import logging
 
@@ -117,7 +118,7 @@ def webhook():
     # Telegram echoes back the secret_token passed to set_webhook —
     # reject anything that doesn't carry it (bots can't be impersonated).
     header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if header_token != config.WEBHOOK_SECRET:
+    if not hmac.compare_digest(header_token or "", config.WEBHOOK_SECRET):
         return Response("Forbidden", status=403)
 
     if ptb_app is None or _loop is None:

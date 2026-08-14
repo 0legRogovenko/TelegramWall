@@ -25,8 +25,11 @@ def _run_migration(conn, sql: str) -> None:
         conn.commit()
     except Exception as exc:
         conn.rollback()  # reset transaction so next ALTER TABLE can run
-        # Usually "column already exists" — but log it so real failures are visible
-        logger.debug("Migration skipped: %s (%s)", sql.strip().split("\n")[0], exc)
+        message = str(exc).lower()
+        log = logger.debug if any(
+            marker in message for marker in ("already exists", "duplicate column")
+        ) else logger.warning
+        log("Migration skipped: %s (%s)", sql.strip().split("\n")[0], exc)
 
 
 def init_db() -> None:
@@ -52,6 +55,10 @@ def init_db() -> None:
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referral_code VARCHAR(32)")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN referred_by INTEGER")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN language VARCHAR(5)")
+        _run_migration(conn, "ALTER TABLE users ADD COLUMN ai_usage_date VARCHAR(10)")
+        _run_migration(
+            conn, "ALTER TABLE users ADD COLUMN ai_usage_count INTEGER NOT NULL DEFAULT 0"
+        )
         # channels — polling cursor
         _run_migration(
             conn, "ALTER TABLE channels ADD COLUMN last_message_id BIGINT DEFAULT 0"
@@ -102,6 +109,11 @@ def init_db() -> None:
         _run_migration(
             conn,
             "CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions (user_id)",
+        )
+        _run_migration(
+            conn,
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_subscriptions_payment_charge_id "
+            "ON subscriptions (payment_charge_id) WHERE payment_charge_id IS NOT NULL",
         )
         _run_migration(
             conn, "CREATE INDEX IF NOT EXISTS ix_posts_grouped_id ON posts (grouped_id)"

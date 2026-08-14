@@ -35,6 +35,7 @@ class Config:
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
     # AI relevance filter: cheap yes/no classification
     CLAUDE_FILTER_MODEL: str = os.getenv("CLAUDE_FILTER_MODEL", "claude-haiku-4-5")
+    AI_DAILY_SUMMARY_LIMIT: int = int(os.getenv("AI_DAILY_SUMMARY_LIMIT", "20"))
 
     # Database
     DATABASE_URL: str = os.environ["DATABASE_URL"]
@@ -87,7 +88,7 @@ class Config:
     # as a separate GitHub Actions job and never imports this config.
 
     # Flask
-    SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "change-me")
+    SECRET_KEY: str | None = os.getenv("FLASK_SECRET_KEY")
     PORT: int = int(os.getenv("FLASK_PORT", "5001"))
     DEBUG: bool = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 

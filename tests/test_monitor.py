@@ -1,11 +1,28 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
-from src.userbot.monitor import _get_eligible_subscribers
+from src.userbot.monitor import MAX_MESSAGE_CHARS, _get_eligible_subscribers, _split_message
 from tests.conftest import (
     create_post,
     create_channel,
     create_user,
     subscribe_user_to_channel,
 )
+
+
+class TestSplitMessage:
+    def test_keeps_short_message_intact(self):
+        assert _split_message("one\n\ntwo") == ["one\n\ntwo"]
+
+    def test_splits_on_paragraph_boundary(self):
+        text = "a" * 2500 + "\n\n" + "b" * 2500
+        chunks = _split_message(text)
+        assert chunks == ["a" * 2500, "b" * 2500]
+        assert all(len(chunk) <= MAX_MESSAGE_CHARS for chunk in chunks)
+
+    def test_splits_single_oversized_paragraph_without_data_loss(self):
+        text = "x" * (MAX_MESSAGE_CHARS * 2 + 17)
+        chunks = _split_message(text)
+        assert "".join(chunks) == text
+        assert all(len(chunk) <= MAX_MESSAGE_CHARS for chunk in chunks)
 
 
 class TestGetEligibleSubscribers:

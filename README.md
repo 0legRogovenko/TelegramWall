@@ -57,16 +57,17 @@ src/models.py            SQLAlchemy-модели (PostgreSQL / SQLite для dev
 | Задача | Модель (по умолчанию) | Параметры |
 |---|---|---|
 | Саммари поста | `claude-haiku-4-5` (`CLAUDE_MODEL`) | ≤250 токенов, thinking off |
-| Дайджест | `claude-haiku-4-5` | ≤1000 токенов, разбивка по темам |
+| Дайджест | `claude-haiku-4-5` | ≤3000 токенов, разбивка по темам |
 | Фильтр по теме | `claude-haiku-4-5` (`CLAUDE_FILTER_MODEL`) | ответ yes/no, ≤3 токенов |
 
-Саммари кэшируются в БД — повторный запрос бесплатен. При недоступности API
+Саммари кэшируются в БД — повторный запрос бесплатен. Пользователь может создать
+до `AI_DAILY_SUMMARY_LIMIT` новых саммари в сутки (по умолчанию 20). При недоступности API
 фильтр пропускает посты (fail-open), доставка не ломается.
 
 ## Запуск локально
 
 ```bash
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
+python3 -m venv venv && venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env          # заполнить токены
 venv/bin/python auth_userbot.py   # один раз: получить TELEGRAM_SESSION_STRING
 venv/bin/python main.py       # polling-режим, если TELEGRAM_WEBHOOK_URL не https
@@ -76,7 +77,7 @@ venv/bin/python main.py       # polling-режим, если TELEGRAM_WEBHOOK_UR
 
 ```bash
 venv/bin/python -m pytest tests/ -q
-venv/bin/python -m flake8 src tests main.py
+venv/bin/python -m flake8 src tests main.py auth_userbot.py scripts
 ```
 
 ## Деплой (GitHub Actions)
