@@ -59,6 +59,13 @@ def init_db() -> None:
         _run_migration(
             conn, "ALTER TABLE users ADD COLUMN ai_usage_count INTEGER NOT NULL DEFAULT 0"
         )
+        _run_migration(conn, "ALTER TABLE users ADD COLUMN pending_summary_post_id INTEGER")
+        _run_migration(
+            conn, "ALTER TABLE subscriptions ADD COLUMN expiry_warning_sent_at TIMESTAMPTZ"
+        )
+        _run_migration(
+            conn, "ALTER TABLE subscriptions ADD COLUMN expired_notice_sent_at TIMESTAMPTZ"
+        )
         # channels — polling cursor
         _run_migration(
             conn, "ALTER TABLE channels ADD COLUMN last_message_id BIGINT DEFAULT 0"

@@ -230,6 +230,39 @@ T = {
         "es": "🎉 <b>¡Pro 💎 activado!</b>\n\n  Duración: {days} días\n  Hasta: <b>{date}</b>\n\n{sep}\n"
               "Ahora disponible:\n  📰 Boletín y auto-resumen — <code>/digest</code>\n  📢 Canales ilimitados",
     },
+    "trial_warning": {
+        "ru": "⏳ <b>Пробный Pro заканчивается скоро</b>\n\nДоступ действует до <b>{date}</b>. "
+              "После этого AI-саммари и дайджест остановятся. Продлите доступ заранее, "
+              "чтобы не прерывать чтение:",
+        "en": "⏳ <b>Your Pro trial ends soon</b>\n\nAccess is active until <b>{date}</b>. "
+              "AI summaries and the digest will stop afterwards. Subscribe now to avoid a gap:",
+        "es": "⏳ <b>Tu prueba Pro termina pronto</b>\n\nEl acceso está activo hasta <b>{date}</b>. "
+              "Después se detendrán los resúmenes AI y el boletín. Suscríbete para evitar una pausa:",
+    },
+    "trial_expired": {
+        "ru": "⌛ <b>Пробный Pro завершён</b>\n\nAI-функции приостановлены. Обычная доставка "
+              "постов в пределах Free продолжает работать. Оформите подписку, чтобы вернуть AI:",
+        "en": "⌛ <b>Your Pro trial has ended</b>\n\nAI features are paused. Regular delivery "
+              "within the Free limits still works. Subscribe to restore AI:",
+        "es": "⌛ <b>Tu prueba Pro terminó</b>\n\nLas funciones AI están pausadas. La entrega "
+              "normal dentro de los límites Free continúa. Suscríbete para recuperar AI:",
+    },
+    "subscription_warning": {
+        "ru": "⏳ <b>Подписка {tier} заканчивается скоро</b>\n\nДоступ действует до <b>{date}</b>. "
+              "Продлите подписку заранее, чтобы не прерывать доставку и AI-функции:",
+        "en": "⏳ <b>Your {tier} subscription ends soon</b>\n\nAccess is active until <b>{date}</b>. "
+              "Renew now to keep delivery and AI features uninterrupted:",
+        "es": "⏳ <b>Tu suscripción {tier} termina pronto</b>\n\nEl acceso está activo hasta <b>{date}</b>. "
+              "Renuévala para mantener la entrega y las funciones AI:",
+    },
+    "subscription_expired": {
+        "ru": "⌛ <b>Подписка {tier} завершена</b>\n\nАккаунт перешёл на Free. Каналы сверх "
+              "бесплатного лимита и AI-функции приостановлены — данные сохранены. Продлить:",
+        "en": "⌛ <b>Your {tier} subscription has ended</b>\n\nYour account is now on Free. Channels above "
+              "the free limit and AI features are paused; your settings are saved. Renew:",
+        "es": "⌛ <b>Tu suscripción {tier} terminó</b>\n\nTu cuenta volvió a Free. Los canales por "
+              "encima del límite y las funciones AI están pausados; tus ajustes se guardaron. Renovar:",
+    },
 
     "ref_bonus": {
         "ru": "🎁 <b>+{days} дн. Basic!</b>\n\nПо вашей реферальной ссылке зарегистрировался новый пользователь.",
@@ -423,6 +456,22 @@ T = {
         "en": "⚠️ Your daily summary limit ({limit}) is reached. Try again tomorrow.",
         "es": "⚠️ Alcanzaste el límite diario de resúmenes ({limit}). Inténtalo mañana.",
     },
+    "sum_saved_for_payment": {
+        "ru": "📌 <b>Запрос сохранён</b>\n\nПосле подключения подписки я автоматически пришлю "
+              "саммари поста <b>#{id}</b> — возвращаться к нему не придётся.",
+        "en": "📌 <b>Request saved</b>\n\nAfter you subscribe, I will automatically send the "
+              "summary of post <b>#{id}</b>; you will not need to find it again.",
+        "es": "📌 <b>Solicitud guardada</b>\n\nDespués de suscribirte enviaré automáticamente "
+              "el resumen del post <b>#{id}</b>; no tendrás que buscarlo de nuevo.",
+    },
+    "sum_resumed_after_payment": {
+        "ru": "✅ <b>Подписка активна — выполняю сохранённый запрос</b>\n\n"
+              "📝 <b>Саммари #{id}</b>\n\n{text}",
+        "en": "✅ <b>Subscription active — completing your saved request</b>\n\n"
+              "📝 <b>Summary #{id}</b>\n\n{text}",
+        "es": "✅ <b>Suscripción activa — completando tu solicitud guardada</b>\n\n"
+              "📝 <b>Resumen #{id}</b>\n\n{text}",
+    },
 
     # Digest
     "digest_unavailable": {
@@ -433,13 +482,19 @@ T = {
     "digest_settings": {
         "ru": "📰 <b>AI-режим</b>\n\n  <b>Авто-саммари</b> — вместо полного поста приходит краткое "
               "AI-саммари со ссылкой на оригинал\n"
-              "  <b>Дайджест</b> — AI-сводка за день в {hour:02d}:00 UTC\n\nНастройте кнопками ниже:",
+              "  <b>Дайджест</b> — AI-сводка за день в {hour:02d}:00 UTC\n\n"
+              "Когда дайджест включён, отдельные посты сразу <b>не приходят</b> — "
+              "они копятся и попадают в одну сводку.\n\nНастройте кнопками ниже:",
         "en": "📰 <b>AI mode</b>\n\n  <b>Auto-summary</b> — instead of the full post you get a short "
               "AI summary with a link to the original\n"
-              "  <b>Digest</b> — daily AI overview at {hour:02d}:00 UTC\n\nConfigure below:",
+              "  <b>Digest</b> — daily AI overview at {hour:02d}:00 UTC\n\n"
+              "When the digest is on, individual posts are <b>not sent immediately</b>; "
+              "they are collected into one overview.\n\nConfigure below:",
         "es": "📰 <b>Modo AI</b>\n\n  <b>Auto-resumen</b> — en lugar del post completo recibes un "
               "resumen AI con enlace al original\n"
-              "  <b>Boletín</b> — resumen AI diario a las {hour:02d}:00 UTC\n\nConfigura abajo:",
+              "  <b>Boletín</b> — resumen AI diario a las {hour:02d}:00 UTC\n\n"
+              "Cuando está activo, los posts individuales <b>no se envían de inmediato</b>; "
+              "se agrupan en un solo boletín.\n\nConfigura abajo:",
     },
     "kb_digest_on":  {"ru": "✅ Дайджест каждый день: ВКЛ", "en": "✅ Daily digest: ON", "es": "✅ Boletín diario: SÍ"},
     "kb_digest_off": {"ru": "❌ Дайджест каждый день: ВЫКЛ", "en": "❌ Daily digest: OFF", "es": "❌ Boletín diario: NO"},

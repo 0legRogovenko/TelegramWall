@@ -35,6 +35,8 @@ class User(Base):
     referred_by: Mapped[int | None] = mapped_column(Integer)   # user.id of referrer
     ai_usage_date: Mapped[str | None] = mapped_column(String(10))
     ai_usage_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # A summary requested while AI access was unavailable. Resumed after payment.
+    pending_summary_post_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     subscriptions: Mapped[list["Subscription"]] = relationship(
@@ -226,6 +228,8 @@ class Subscription(Base):
     payment_currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="XTR")
     payment_charge_id: Mapped[str | None] = mapped_column(String(256))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expiry_warning_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expired_notice_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped["User"] = relationship(back_populates="subscriptions")

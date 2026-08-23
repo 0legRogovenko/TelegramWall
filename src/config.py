@@ -67,6 +67,9 @@ class Config:
     CHANNEL_LIMIT_FREE: int = int(os.getenv("CHANNEL_LIMIT_FREE", "3"))
     CHANNEL_LIMIT_BASIC: int = int(os.getenv("CHANNEL_LIMIT_BASIC", "10"))
     TRIAL_DAYS: int = int(os.getenv("TRIAL_DAYS", "3"))
+    SUBSCRIPTION_WARNING_HOURS: int = int(
+        os.getenv("SUBSCRIPTION_WARNING_HOURS", "24")
+    )
     REFERRAL_BONUS_DAYS: int = int(os.getenv("REFERRAL_BONUS_DAYS", "3"))
     DIGEST_HOUR_UTC: int = int(os.getenv("DIGEST_HOUR_UTC", "8"))
     # Posts older than this are purged from the DB daily (chat messages remain)

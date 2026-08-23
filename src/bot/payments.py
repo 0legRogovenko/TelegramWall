@@ -145,6 +145,8 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
         existing = db.query(Subscription).filter_by(payment_charge_id=charge_id).first()
         if existing:
             logger.info("Duplicate successful_payment ignored: %s", charge_id)
+            from src.bot.handlers.ai import resume_pending_summary
+            await resume_pending_summary(telegram_id, context.bot)
             return
 
         user = db.query(User).filter_by(telegram_id=telegram_id).first()
@@ -177,3 +179,6 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
             reply_markup=main_menu(paid=True),
         )
         await _sync_menu_commands(context.bot, update.effective_chat.id, user)
+
+    from src.bot.handlers.ai import resume_pending_summary
+    await resume_pending_summary(telegram_id, context.bot)

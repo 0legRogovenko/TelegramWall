@@ -58,3 +58,18 @@ async def test_summary_callback_returns_cached_summary_for_own_channel(db):
 
     update.callback_query.message.reply_text.assert_awaited_once()
     assert "safe summary" in update.callback_query.message.reply_text.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_free_user_summary_request_is_saved_for_after_payment(db):
+    user = create_user(db, telegram_id=9403, language="ru")
+    channel = create_channel(db, "callback_pending")
+    subscribe_user_to_channel(db, user, channel)
+    post = create_post(db, channel, text="x" * 100, msg_id=9403)
+    update = _callback_update(user.telegram_id, f"sum:{post.id}")
+
+    await callback_handler(update, make_context())
+
+    db.refresh(user)
+    assert user.pending_summary_post_id == post.id
+    update.callback_query.message.reply_text.assert_awaited_once()

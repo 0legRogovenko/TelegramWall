@@ -157,6 +157,7 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    trial_started = False
     with db_session() as db:
         user = _get_or_create_user(db, update.effective_user)
         lang = lang_of(user)
@@ -183,6 +184,11 @@ async def cmd_trial(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             reply_markup=main_menu(paid=True, lang=lang),
         )
         await _sync_menu_commands(context.bot, update.effective_chat.id, user)
+        trial_started = True
+
+    if trial_started:
+        from src.bot.handlers.ai import resume_pending_summary
+        await resume_pending_summary(update.effective_user.id, context.bot)
 
 
 async def cmd_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

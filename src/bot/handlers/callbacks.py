@@ -15,6 +15,7 @@ from src.bot.keyboards import (
     digest_channels_keyboard,
     digest_keyboard,
     main_menu,
+    subscribe_keyboard,
     user_channels_keyboard,
 )
 from src.bot.payments import send_invoice
@@ -163,12 +164,18 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         with db_session() as db:
             user = _get_or_create_user(db, update.effective_user)
             lang = lang_of(user)
-            if not user.can_summary:
-                await query.answer(t("pro_only_alert", lang), show_alert=True)
-                return
             post = authorized_post(db, user, post_id)
             if not post or not post.text:
                 await query.answer(t("sum_no_text", lang), show_alert=True)
+                return
+            if not user.can_summary:
+                user.pending_summary_post_id = post_id
+                db.commit()
+                await query.message.reply_text(
+                    t("sum_saved_for_payment", lang, id=post_id),
+                    parse_mode="HTML",
+                    reply_markup=subscribe_keyboard(lang),
+                )
                 return
             if post.summary:
                 await query.message.reply_text(

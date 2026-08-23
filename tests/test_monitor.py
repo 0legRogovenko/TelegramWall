@@ -1,5 +1,10 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
-from src.userbot.monitor import MAX_MESSAGE_CHARS, _get_eligible_subscribers, _split_message
+from src.userbot.monitor import (
+    MAX_MESSAGE_CHARS,
+    _get_eligible_subscriber_details,
+    _get_eligible_subscribers,
+    _split_message,
+)
 from tests.conftest import (
     create_post,
     create_channel,
@@ -69,6 +74,27 @@ class TestGetEligibleSubscribers:
         subscribe_user_to_channel(db, user, channel)
         result = _get_eligible_subscribers(db, channel.id, "some text")
         assert any(tg_id == 7013 and ai_f is None for tg_id, ai_f in result)
+
+    def test_enabled_digest_suppresses_instant_delivery_for_pro(self, db):
+        from tests.conftest import create_subscription
+
+        user = create_user(db, telegram_id=7060, digest_enabled=True)
+        create_subscription(db, user, tier="pro")
+        channel = create_channel(db, username="digest_only_7060")
+        subscribe_user_to_channel(db, user, channel)
+
+        result = _get_eligible_subscriber_details(db, channel.id, "news")
+
+        assert result == [(7060, None, True)]
+
+    def test_digest_flag_does_not_suppress_free_delivery_after_expiry(self, db):
+        user = create_user(db, telegram_id=7061, digest_enabled=True)
+        channel = create_channel(db, username="expired_digest_7061")
+        subscribe_user_to_channel(db, user, channel)
+
+        result = _get_eligible_subscriber_details(db, channel.id, "news")
+
+        assert result == [(7061, None, False)]
 
 
 class TestChannelLimitEnforcement:

@@ -161,6 +161,18 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
        than they currently have, only the earliest-added ones are delivered.
        The UserChannel record is NOT modified (soft enforcement).
     """
+    return [
+        (telegram_id, ai_filter)
+        for telegram_id, ai_filter, _ in _get_eligible_subscriber_details(
+            db, channel_id, text
+        )
+    ]
+
+
+def _get_eligible_subscriber_details(
+    db, channel_id: int, text: str,
+) -> list[tuple[int, str | None, bool]]:
+    """Return eligible subscribers plus whether they chose digest-only delivery."""
     ucs = (
         db.query(UserChannel)
         .filter_by(channel_id=channel_id, is_active=True)
@@ -188,7 +200,8 @@ def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int,
                 )
                 continue
 
-        result.append((user.telegram_id, uc.ai_filter))
+        digest_only = user.digest_enabled and user.can_auto_summary
+        result.append((user.telegram_id, uc.ai_filter, digest_only))
 
     logger.debug("Eligible subscribers for channel %s: %s", channel_id, [r[0] for r in result])
     return result
@@ -335,7 +348,7 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
             text = msg.message or ""
             media_type = _get_media_type(msg)
             channel_label = channel.title or f"@{channel.username}"
-            subscriber_ids = _get_eligible_subscribers(db, channel.id, text)
+            subscriber_ids = _get_eligible_subscriber_details(db, channel.id, text)
 
             post = Post(
                 channel_id=channel.id, message_id=msg.id, text=text,
@@ -360,7 +373,13 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
     logger.info("New post #%s from @%s → %d candidate(s)",
                 post_id, channel.username, len(subscriber_ids))
 
-    for tg_id, ai_filter in subscriber_ids:
+    for tg_id, ai_filter, digest_only in subscriber_ids:
+        # Daily digest is a reading mode, not an extra duplicate notification.
+        # The post remains in the DB and is included in the user's digest.
+        if digest_only:
+            logger.debug("Digest-only user %s: post #%s stored without instant send",
+                         tg_id, post_id)
+            continue
         # AI filter check (async, non-blocking)
         if ai_filter and text:
             try:
@@ -877,6 +896,20 @@ async def _report_loop() -> None:
         await asyncio.sleep(600)  # re-check every 10 min
 
 
+async def _subscription_notice_loop() -> None:
+    """Warn users before access expires and confirm when it has expired."""
+    from src.services.subscription_notifier import send_due_notifications
+
+    while True:
+        try:
+            sent = await send_due_notifications()
+            if sent:
+                logger.info("Sent %d subscription expiry notification(s)", sent)
+        except Exception as exc:
+            logger.warning("Subscription notification check failed: %s", exc)
+        await asyncio.sleep(1800)
+
+
 def _cleanup_old_posts(db) -> int:
     """Purge posts older than POST_RETENTION_DAYS from the DB.
 
@@ -1244,6 +1277,7 @@ async def start_userbot() -> TelegramClient:
     loop.create_task(_cleanup_loop())
     loop.create_task(_heartbeat_loop())
     loop.create_task(_report_loop())
+    loop.create_task(_subscription_notice_loop())
 
     _client = client
     db = get_session()
