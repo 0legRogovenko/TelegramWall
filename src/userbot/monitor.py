@@ -1,23 +1,13 @@
 """Telethon userbot — monitors channels via polling + live events."""
 import asyncio
 import html
-import io
 import logging
-import re
 import time
 from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
-from telethon.tl.types import (
-    DocumentAttributeAudio,
-    DocumentAttributeFilename,
-    DocumentAttributeVideo,
-    Message,
-    MessageMediaDocument,
-    MessageMediaPhoto,
-    UpdateNewChannelMessage,
-)
+from telethon.tl.types import Message, UpdateNewChannelMessage
 
 from src.bot.i18n import lang_of, t
 from src.bot.keyboards import summary_button
@@ -26,6 +16,19 @@ from src.database import db_session, get_session
 from src.models import BotEvent, BotHealth, Channel, PendingPost, Post, User, UserChannel
 from src.services import metrics
 from src.services.summarizer import build_digest, summarize
+from src.userbot.media import (
+    MEDIA_CACHE_MAX as _MEDIA_CACHE_MAX,
+    MEDIA_FILE_IDS as _media_file_ids,
+    cache_file_id as _cache_file_id,
+    caption_fits as _caption_fits,
+    caption_text_budget as _caption_text_budget,
+    download_media_bytes as _download_media_bytes,
+    get_media_type as _get_media_type,
+    is_file_error as _is_file_error,
+    media_filename as _media_filename,
+    media_size_ok as _media_size_ok,
+    send_media as _send_media,
+)
 from src.userbot.subscribers import (
     get_eligible_subscriber_details as _get_eligible_subscriber_details,
     get_eligible_subscribers as _get_eligible_subscribers,
@@ -37,6 +40,17 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "_get_eligible_subscriber_details",
     "_get_eligible_subscribers",
+    "_cache_file_id",
+    "_caption_fits",
+    "_caption_text_budget",
+    "_download_media_bytes",
+    "_get_media_type",
+    "_is_file_error",
+    "_MEDIA_CACHE_MAX",
+    "_media_file_ids",
+    "_media_filename",
+    "_media_size_ok",
+    "_send_media",
     "_user_lang",
 ]
 
@@ -70,152 +84,6 @@ _in_flight: dict[tuple[int, int], dict] = {}
 
 # (tg_id, channel_id) → {"posts": [...], "label": str, "username": str, "first_at": float}
 _batch_buffer: dict[tuple[int, int], dict] = {}
-
-# Bot API file_id per delivered post: a channel with N subscribers uploads the
-# file once and reuses the id for the other N-1 sends. Process-local — after a
-# restart the first delivery simply re-uploads.
-_media_file_ids: dict[int, str] = {}
-_MEDIA_CACHE_MAX = 500
-
-# Telegram's caption limit is 1024 visible chars. The budget for post text is
-# computed per-message (the header carries the channel title, which varies);
-# this cap just keeps very long posts readable as a separate message.
-_CAPTION_TEXT_BUDGET = 900
-
-
-def _caption_text_budget(header: str, post_id: int) -> int:
-    """How many text chars fit into the caption next to this header.
-
-    Telegram counts visible (parsed) characters, so tags are stripped.
-    A margin absorbs entity unescaping and emoji counting as two UTF-16 units.
-    """
-    visible_header = html.unescape(re.sub(r"<[^>]+>", "", header))
-    overhead = len(visible_header) + len(f"#{post_id}") + 4  # two "\n\n" joints
-    return min(_CAPTION_TEXT_BUDGET, 1024 - overhead - 20)
-
-
-def _caption_fits(caption: str) -> bool:
-    """Whether an HTML caption fits Telegram's 1024-visible-character limit."""
-    visible = html.unescape(re.sub(r"<[^>]+>", "", caption))
-    return len(visible) <= 1000  # margin for emoji counted as UTF-16 pairs
-
-
-def _get_media_type(message) -> str | None:
-    """Classify the message's own attachment.
-
-    Deliberately inspects message.media instead of Telethon's .photo/.video/
-    .document helpers: those fall through to the WEB PREVIEW of a link, so a
-    plain text post linking an article would be classified as a photo and
-    delivered as that article's og:image.
-    """
-    media = getattr(message, "media", None)
-    if isinstance(media, MessageMediaPhoto):
-        return "photo"
-    if isinstance(media, MessageMediaDocument):
-        attrs = getattr(getattr(media, "document", None), "attributes", None) or []
-        for attr in attrs:
-            if isinstance(attr, DocumentAttributeVideo):
-                return "video"
-            if isinstance(attr, DocumentAttributeAudio):
-                return "audio"
-        return "document"
-    return None  # web previews, polls, geo, contacts — nothing to re-upload
-
-
-def _media_filename(message) -> str | None:
-    """Original filename, so re-uploaded documents don't arrive as
-    'application.octet-stream' (PTB's fallback name for raw bytes)."""
-    media = getattr(message, "media", None)
-    attrs = getattr(getattr(media, "document", None), "attributes", None) or []
-    for attr in attrs:
-        if isinstance(attr, DocumentAttributeFilename):
-            return attr.file_name
-    return None
-
-
-def _media_size_ok(msg) -> bool:
-    size = getattr(getattr(msg, "file", None), "size", None)
-    if size is None:
-        return True  # photos may not report a size; they are small anyway
-    return size <= config.MEDIA_MAX_MB * 1024 * 1024
-
-
-async def _download_media_bytes(client: TelegramClient, msg) -> io.BytesIO | None:
-    """Fetch the media via the userbot. None on any failure — delivery falls
-    back to the text/link form rather than dying.
-
-    Returns the buffer itself rather than .getvalue() so a multi-MB file is
-    not held twice in memory on the single worker thread.
-    """
-    try:
-        buf = io.BytesIO()
-        await client.download_media(msg, file=buf)
-        if not buf.getbuffer().nbytes:
-            return None
-        buf.seek(0)
-        return buf
-    except Exception as exc:
-        logger.warning("Media download failed for msg %s: %s", msg.id, exc)
-        return None
-
-
-async def _send_media(
-    tg_id: int, media_kind: str, media, caption: str,
-    reply_markup=None, filename: str | None = None,
-):
-    """Send one media message via the bot. Returns the PTB Message."""
-    from src.bot.app import ptb_app
-    if hasattr(media, "seek"):
-        media.seek(0)  # reusable across retries
-    kwargs = dict(
-        chat_id=tg_id, caption=caption, parse_mode="HTML", reply_markup=reply_markup,
-        # PTB's defaults (read 5s / media write 20s) are far too tight for
-        # multi-MB uploads: they raise TimedOut after Telegram already accepted
-        # the message, which would double-deliver the post.
-        read_timeout=120, write_timeout=120, connect_timeout=30,
-    )
-    if media_kind == "photo":
-        return await ptb_app.bot.send_photo(photo=media, **kwargs)
-    if media_kind == "video":
-        return await ptb_app.bot.send_video(video=media, **kwargs)
-    if media_kind == "audio":
-        return await ptb_app.bot.send_audio(audio=media, **kwargs)
-    if filename:
-        kwargs["filename"] = filename
-    return await ptb_app.bot.send_document(document=media, **kwargs)
-
-
-def _is_file_error(exc: Exception) -> bool:
-    """True when the failure is about the FILE, not the recipient.
-
-    A cached file_id must survive per-user failures (blocked bot, deleted
-    account); dropping it there would make every remaining subscriber
-    re-download and re-upload the same multi-MB file.
-    """
-    text = str(exc).lower()
-    return any(s in text for s in (
-        "file", "wrong file identifier", "media", "caption", "photo", "document",
-    ))
-
-
-def _cache_file_id(post_id: int, sent) -> None:
-    """Remember the Bot API file_id from the first upload for reuse."""
-    try:
-        fid = None
-        if sent.photo:
-            fid = sent.photo[-1].file_id
-        elif sent.video:
-            fid = sent.video.file_id
-        elif sent.audio:
-            fid = sent.audio.file_id
-        elif sent.document:
-            fid = sent.document.file_id
-        if fid:
-            if len(_media_file_ids) >= _MEDIA_CACHE_MAX:
-                _media_file_ids.pop(next(iter(_media_file_ids)))
-            _media_file_ids[post_id] = fid
-    except Exception:
-        pass  # cache is an optimization; never let it break delivery
 
 
 def _absorb_album_sibling(db, channel_id: int, msg, head: Post) -> None:

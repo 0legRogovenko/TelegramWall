@@ -40,3 +40,13 @@ def test_subscriber_helpers_come_from_focused_module():
         monitor._get_eligible_subscriber_details
         is subscribers.get_eligible_subscriber_details
     )
+
+
+def test_media_helpers_come_from_focused_module():
+    from src.userbot import media
+
+    assert monitor._get_media_type is media.get_media_type
+    assert monitor._media_filename is media.media_filename
+    assert monitor._media_size_ok is media.media_size_ok
+    assert monitor._cache_file_id is media.cache_file_id
+    assert monitor._media_file_ids is media.MEDIA_FILE_IDS
