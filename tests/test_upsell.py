@@ -1,5 +1,7 @@
 """Paid feature offer eligibility and delivery tests."""
+import asyncio
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -8,6 +10,7 @@ from src.bot.i18n import T
 from src.config import config
 from src.models import Subscription, User, UserChannel
 from src.services.upsell import CAMPAIGN_KEYS, UpsellCandidate, render_upsell
+from src.services import upsell as upsell_module
 from tests.conftest import create_channel, create_subscription, create_user
 
 
@@ -152,3 +155,94 @@ def test_used_trial_keyboard_has_only_monthly_plans():
         "subscribe:basic",
         "subscribe:pro",
     ]
+
+
+@pytest.fixture
+def inline_to_thread(monkeypatch):
+    async def inline(func, *args):
+        return func(*args)
+
+    monkeypatch.setattr("src.services.upsell.asyncio.to_thread", inline)
+
+
+async def test_successful_send_records_cooldown(db, monkeypatch, inline_to_thread):
+    now = datetime.now(timezone.utc)
+    user = create_user(
+        db,
+        telegram_id=9620,
+        language="ru",
+        created_at=now - timedelta(days=10),
+    )
+    _active_channel(db, user, "send_success")
+    app = MagicMock()
+    app.bot.send_message = AsyncMock()
+    monkeypatch.setattr("src.bot.app.ptb_app", app)
+
+    assert hasattr(upsell_module, "send_due_upsells")
+    assert await upsell_module.send_due_upsells() >= 1
+    db.refresh(user)
+    assert user.upsell_last_sent_at is not None
+
+
+async def test_failed_send_does_not_consume_cooldown(
+    db, monkeypatch, inline_to_thread
+):
+    now = datetime.now(timezone.utc)
+    user = create_user(
+        db,
+        telegram_id=9621,
+        language="ru",
+        created_at=now - timedelta(days=10),
+    )
+    _active_channel(db, user, "send_failure")
+    app = MagicMock()
+    app.bot.send_message = AsyncMock(side_effect=RuntimeError("Telegram down"))
+    monkeypatch.setattr("src.bot.app.ptb_app", app)
+
+    assert hasattr(upsell_module, "send_due_upsells")
+    await upsell_module.send_due_upsells()
+    db.refresh(user)
+    assert user.upsell_last_sent_at is None
+
+
+async def test_candidate_that_subscribed_before_send_is_skipped(
+    db, monkeypatch, inline_to_thread
+):
+    now = datetime.now(timezone.utc)
+    user = create_user(
+        db,
+        telegram_id=9622,
+        language="ru",
+        created_at=now - timedelta(days=10),
+    )
+    _active_channel(db, user, "revalidate")
+    app = MagicMock()
+    app.bot.send_message = AsyncMock()
+    monkeypatch.setattr("src.bot.app.ptb_app", app)
+    assert hasattr(upsell_module, "_load_due")
+    candidates = upsell_module._load_due()
+    create_subscription(db, user, tier="basic")
+    monkeypatch.setattr("src.services.upsell._load_due", lambda: candidates)
+
+    assert hasattr(upsell_module, "send_due_upsells")
+    await upsell_module.send_due_upsells()
+
+    assert all(
+        call.kwargs["chat_id"] != user.telegram_id
+        for call in app.bot.send_message.await_args_list
+    )
+
+
+async def test_upsell_loop_runs_sender_before_sleep(monkeypatch):
+    from src.userbot import monitor
+
+    sender = AsyncMock(return_value=2)
+    monkeypatch.setattr("src.services.upsell.send_due_upsells", sender)
+
+    async def stop_after_first_pass(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(monitor.asyncio, "sleep", stop_after_first_pass)
+    with pytest.raises(asyncio.CancelledError):
+        await monitor._upsell_loop()
+    sender.assert_awaited_once()

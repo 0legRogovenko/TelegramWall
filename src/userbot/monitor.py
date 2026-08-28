@@ -910,6 +910,20 @@ async def _subscription_notice_loop() -> None:
         await asyncio.sleep(1800)
 
 
+async def _upsell_loop() -> None:
+    """Send bounded paid-feature campaigns to eligible Free users hourly."""
+    from src.services.upsell import send_due_upsells
+
+    while True:
+        try:
+            sent = await send_due_upsells()
+            if sent:
+                logger.info("Sent %d paid-feature offer(s)", sent)
+        except Exception as exc:
+            logger.warning("Upsell pass failed: %s", exc)
+        await asyncio.sleep(3600)
+
+
 def _cleanup_old_posts(db) -> int:
     """Purge posts older than POST_RETENTION_DAYS from the DB.
 
@@ -1278,6 +1292,7 @@ async def start_userbot() -> TelegramClient:
     loop.create_task(_heartbeat_loop())
     loop.create_task(_report_loop())
     loop.create_task(_subscription_notice_loop())
+    loop.create_task(_upsell_loop())
 
     _client = client
     db = get_session()
