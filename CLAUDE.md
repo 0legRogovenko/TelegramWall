@@ -22,6 +22,13 @@ job не завершён/отменён — читать можно тольк�
 asyncio-потоке**. Любой блокирующий вызов (БД, Anthropic) на горячем пути —
 только через `asyncio.to_thread`, иначе встаёт вся доставка.
 
+- `src/userbot/monitor.py` — Telethon polling and runtime facade.
+- `src/userbot/subscribers.py` — eligibility and channel limits.
+- `src/userbot/media.py` — attachment policy and Bot API media reuse.
+- `src/userbot/delivery.py` — persistence, ordering, retries, pending replay.
+- `src/userbot/digests.py` — AI digest generation and schedule.
+- `src/userbot/maintenance.py` — heartbeat, reports, notices, cleanup.
+
 - Юзербот **читает** публичные каналы, не вступая в них → live-пушей от
   Telegram НЕТ, единственный источник постов — опрос (`_poll_channels`).
 - Бот **не может форвардить** из каналов (он не участник). Медиа: юзербот

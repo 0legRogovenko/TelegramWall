@@ -17,7 +17,7 @@ async def main():
     me = await client.get_me()
     print(f"\n✅ Авторизован как: {me.first_name} (@{me.username})")
     print("\n" + "=" * 60)
-    print("TELEGRAM_SESSION_STRING (скопируй в Render env vars):")
+    print("TELEGRAM_SESSION_STRING (сохраните как GitHub Secret):")
     print("=" * 60)
     print(client.session.save())
     print("=" * 60 + "\n")

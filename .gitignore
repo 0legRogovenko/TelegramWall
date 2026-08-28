@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.worktrees/
 dist/
 *.egg-info/
 .mypy_cache/
@@ -16,3 +17,7 @@ dev.db
 
 assets/bot_avatar.png
 promo/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
