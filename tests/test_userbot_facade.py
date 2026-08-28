@@ -9,6 +9,13 @@ PUBLIC_RUNTIME_API = (
     "flush_buffer_on_shutdown",
 )
 
+DECLARED_PUBLIC_API = [
+    "flush_buffer_on_shutdown",
+    "refresh_channels",
+    "send_digest_now",
+    "start_userbot",
+]
+
 COMPATIBILITY_HELPERS = (
     "MAX_MESSAGE_CHARS",
     "_split_message",
@@ -25,6 +32,10 @@ COMPATIBILITY_HELPERS = (
 def test_monitor_exposes_runtime_api():
     for name in PUBLIC_RUNTIME_API:
         assert callable(getattr(monitor, name))
+
+
+def test_monitor_declares_only_supported_public_api():
+    assert monitor.__all__ == DECLARED_PUBLIC_API
 
 
 def test_monitor_keeps_tested_compatibility_helpers():

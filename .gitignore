@@ -17,3 +17,7 @@ dev.db
 
 assets/bot_avatar.png
 promo/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
