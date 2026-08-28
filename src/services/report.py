@@ -51,6 +51,7 @@ def build_report(db) -> str:
     total_users = db.query(User).count()
     new_users = db.query(User).filter(User.created_at >= day_ago).count()
     active_users = db.query(UserChannel.user_id).filter_by(is_active=True).distinct().count()
+    upsells_sent = count(metrics.UPSELL_SENT)
 
     # Content
     posts_saved = count(metrics.POST_SAVED)
@@ -112,6 +113,7 @@ def build_report(db) -> str:
         f"  👤 Всего: <b>{total_users}</b>  (+{new_users} за сутки)",
         f"  ✅ С активными каналами: {active_users}",
         f"  💳 Платных подписок: {paid_subs}",
+        f"  📣 Предложений подписки: {upsells_sent}",
         SEP,
         "<b>Контент</b>",
         f"  📥 Новых постов собрано: <b>{posts_saved}</b>",

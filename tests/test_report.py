@@ -138,6 +138,13 @@ class TestBuildReport:
         text = build_report(db)
         assert "$1.0000" in text
 
+    def test_report_counts_paid_feature_offers(self, db):
+        _event(db, metrics.UPSELL_SENT)
+
+        report = build_report(db)
+
+        assert "Предложений подписки: 1" in report
+
     def test_no_errors_line_when_clean(self, db):
         text = build_report(db)
         assert "Ошибок нет" in text
