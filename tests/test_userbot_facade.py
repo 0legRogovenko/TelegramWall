@@ -66,3 +66,11 @@ def test_digest_runtime_comes_from_focused_module():
     assert monitor._split_message is digests.split_message
     assert monitor.send_digest_now is digests.send_digest_now
     assert monitor._digest_loop is digests.digest_loop
+
+
+def test_cleanup_comes_from_maintenance_module():
+    from src.userbot import maintenance
+
+    assert monitor._cleanup_old_posts is maintenance.cleanup_old_posts
+    assert monitor._heartbeat_loop is maintenance.heartbeat_loop
+    assert monitor._upsell_loop is maintenance.upsell_loop
