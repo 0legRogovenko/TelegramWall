@@ -58,3 +58,11 @@ def test_delivery_runtime_comes_from_focused_module():
     assert monitor._process_message is delivery.process_message
     assert monitor.flush_buffer_on_shutdown is delivery.flush_buffer_on_shutdown
     assert monitor._flush_pending is delivery.flush_pending
+
+
+def test_digest_runtime_comes_from_focused_module():
+    from src.userbot import digests
+
+    assert monitor._split_message is digests.split_message
+    assert monitor.send_digest_now is digests.send_digest_now
+    assert monitor._digest_loop is digests.digest_loop
