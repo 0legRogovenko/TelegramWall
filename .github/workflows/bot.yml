@@ -1,5 +1,8 @@
 name: Bot
 
+permissions:
+  contents: read
+
 # Runs the bot in polling mode.
 # concurrency: cancel-in-progress ensures only one instance runs at a time —
 # a new push or cron fires, kills the previous instance, then starts fresh.
@@ -28,9 +31,9 @@ jobs:
     timeout-minutes: 350     # ~5.8h — just under GitHub's 6-hour job limit
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
