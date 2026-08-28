@@ -37,6 +37,7 @@ class User(Base):
     ai_usage_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # A summary requested while AI access was unavailable. Resumed after payment.
     pending_summary_post_id: Mapped[int | None] = mapped_column(Integer)
+    upsell_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     subscriptions: Mapped[list["Subscription"]] = relationship(

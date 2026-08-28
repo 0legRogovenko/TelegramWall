@@ -61,6 +61,9 @@ def init_db() -> None:
         )
         _run_migration(conn, "ALTER TABLE users ADD COLUMN pending_summary_post_id INTEGER")
         _run_migration(
+            conn, "ALTER TABLE users ADD COLUMN upsell_last_sent_at TIMESTAMPTZ"
+        )
+        _run_migration(
             conn, "ALTER TABLE subscriptions ADD COLUMN expiry_warning_sent_at TIMESTAMPTZ"
         )
         _run_migration(

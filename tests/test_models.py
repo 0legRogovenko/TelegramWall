@@ -5,7 +5,9 @@ between tests that share a single in-memory SQLite database.
 """
 from datetime import datetime, timedelta, timezone
 
-from src.models import Subscription
+from sqlalchemy import inspect as sa_inspect
+
+from src.models import Subscription, User
 from tests.conftest import create_subscription, create_user
 
 # Telegram IDs for this module: 8001–8100 (no overlap with other test files)
@@ -15,6 +17,10 @@ _TG = iter(range(8001, 8101))
 def _uid():
     """Return the next unique telegram_id."""
     return next(_TG)
+
+
+def test_user_maps_upsell_cooldown_column():
+    assert "upsell_last_sent_at" in sa_inspect(User).columns.keys()
 
 
 # ── Subscription tier & properties ───────────────────────────────────────────
