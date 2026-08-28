@@ -69,6 +69,29 @@ def subscribe_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     ])
 
 
+def upsell_keyboard(trial_used: bool, lang: str = "ru") -> InlineKeyboardMarkup:
+    """Compact trial-aware keyboard for paid-feature offers."""
+    from src.bot.payments import price_label
+
+    rows = []
+    if not trial_used:
+        rows.append([
+            InlineKeyboardButton(t("kb_trial", lang), callback_data="start_trial")
+        ])
+    per_month = t("kb_per_month", lang)
+    rows.extend([
+        [InlineKeyboardButton(
+            f"⭐ Basic — {price_label('basic')} {per_month}",
+            callback_data="subscribe:basic",
+        )],
+        [InlineKeyboardButton(
+            f"💎 Pro — {price_label('pro')} {per_month}",
+            callback_data="subscribe:pro",
+        )],
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
 def subscription_active_keyboard(tier: str = "basic", lang: str = "ru") -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(
         t("kb_renew", lang, label=tier_label(tier, lang)),

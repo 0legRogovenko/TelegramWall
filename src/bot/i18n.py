@@ -211,6 +211,23 @@ T = {
     "kb_renew":     {"ru": "🔄 Продлить {label}", "en": "🔄 Renew {label}", "es": "🔄 Renovar {label}"},
     "kb_upgrade":   {"ru": "⬆️ Улучшить до {label}", "en": "⬆️ Upgrade to {label}", "es": "⬆️ Mejorar a {label}"},
 
+    # Periodic paid-feature offers for active Free users
+    "upsell_summary": {
+        "ru": "📝 <b>Не успеваете читать длинные посты?</b>\n\nBasic сделает краткое саммари по запросу — основные мысли без лишнего текста.\n\n⭐ Basic: <b>{basic_price}</b>",
+        "en": "📝 <b>No time for long posts?</b>\n\nBasic creates an on-demand summary with the key ideas only.\n\n⭐ Basic: <b>{basic_price}</b>",
+        "es": "📝 <b>¿No tienes tiempo para posts largos?</b>\n\nBasic crea un resumen bajo demanda con las ideas principales.\n\n⭐ Basic: <b>{basic_price}</b>",
+    },
+    "upsell_digest": {
+        "ru": "📰 <b>Читайте каналы один раз в день</b>\n\nPro собирает посты в цельный AI-дайджест и умеет автоматически сокращать новые публикации.\n\n💎 Pro: <b>{pro_price}</b>",
+        "en": "📰 <b>Read your channels once a day</b>\n\nPro turns posts into one AI digest and can summarize new publications automatically.\n\n💎 Pro: <b>{pro_price}</b>",
+        "es": "📰 <b>Lee tus canales una vez al día</b>\n\nPro reúne los posts en un boletín AI y puede resumir nuevas publicaciones automáticamente.\n\n💎 Pro: <b>{pro_price}</b>",
+    },
+    "upsell_capacity": {
+        "ru": "📢 <b>Добавьте больше важных источников</b>\n\nBasic поддерживает до {basic_limit} каналов, а Pro — без ограничений.\n\n⭐ {basic_price} · 💎 {pro_price}",
+        "en": "📢 <b>Add more important sources</b>\n\nBasic supports up to {basic_limit} channels; Pro has no channel limit.\n\n⭐ {basic_price} · 💎 {pro_price}",
+        "es": "📢 <b>Añade más fuentes importantes</b>\n\nBasic admite hasta {basic_limit} canales; Pro no tiene límite.\n\n⭐ {basic_price} · 💎 {pro_price}",
+    },
+
     # /trial
     "trial_used": {
         "ru": "⚠️ <b>Пробный период уже использован</b>\n\nОформите подписку, чтобы продолжить:",
