@@ -7,7 +7,6 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.orm import joinedload
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 from telethon.tl.types import (
@@ -27,8 +26,19 @@ from src.database import db_session, get_session
 from src.models import BotEvent, BotHealth, Channel, PendingPost, Post, User, UserChannel
 from src.services import metrics
 from src.services.summarizer import build_digest, summarize
+from src.userbot.subscribers import (
+    get_eligible_subscriber_details as _get_eligible_subscriber_details,
+    get_eligible_subscribers as _get_eligible_subscribers,
+    user_lang as _user_lang,
+)
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "_get_eligible_subscriber_details",
+    "_get_eligible_subscribers",
+    "_user_lang",
+]
 
 _client: TelegramClient | None = None
 
@@ -121,95 +131,6 @@ def _media_filename(message) -> str | None:
         if isinstance(attr, DocumentAttributeFilename):
             return attr.file_name
     return None
-
-
-def _batch_allowed_channel_ids(db, limited_users: list[tuple[int, int]]) -> dict[int, set[int]]:
-    """Return {user_id: set of allowed channel_ids} for users on limited tiers.
-
-    Queries ALL UserChannels (active or not) so deactivating old channels
-    cannot shift newer ones into the allowed window. Stable tie-breaking via
-    (created_at, id) prevents non-determinism at identical timestamps.
-    Single batch query replaces N individual queries.
-    """
-    if not limited_users:
-        return {}
-    user_ids = [uid for uid, _ in limited_users]
-    limits = {uid: lim for uid, lim in limited_users}
-
-    rows = (
-        db.query(UserChannel.user_id, UserChannel.channel_id)
-        .filter(UserChannel.user_id.in_(user_ids))
-        .order_by(UserChannel.user_id, UserChannel.created_at, UserChannel.id)
-        .all()
-    )
-
-    result: dict[int, set[int]] = {}
-    counts: dict[int, int] = {}
-    for user_id, ch_id in rows:
-        seen = counts.get(user_id, 0)
-        if seen < limits[user_id]:
-            result.setdefault(user_id, set()).add(ch_id)
-            counts[user_id] = seen + 1
-    return result
-
-
-def _get_eligible_subscribers(db, channel_id: int, text: str) -> list[tuple[int, str | None]]:
-    """Return (telegram_id, ai_filter) for subscribers who pass all delivery checks.
-
-    Checks applied:
-    1. Channel-limit enforcement — if the user's tier allows fewer channels
-       than they currently have, only the earliest-added ones are delivered.
-       The UserChannel record is NOT modified (soft enforcement).
-    """
-    return [
-        (telegram_id, ai_filter)
-        for telegram_id, ai_filter, _ in _get_eligible_subscriber_details(
-            db, channel_id, text
-        )
-    ]
-
-
-def _get_eligible_subscriber_details(
-    db, channel_id: int, text: str,
-) -> list[tuple[int, str | None, bool]]:
-    """Return eligible subscribers plus whether they chose digest-only delivery."""
-    ucs = (
-        db.query(UserChannel)
-        .filter_by(channel_id=channel_id, is_active=True)
-        .options(joinedload(UserChannel.user).joinedload(User.subscriptions))
-        .all()
-    )
-
-    limited_users = [
-        (uc.user.id, uc.user.channel_limit)
-        for uc in ucs
-        if uc.user.channel_limit is not None
-    ]
-    allowed_map = _batch_allowed_channel_ids(db, limited_users)
-
-    result = []
-    for uc in ucs:
-        user = uc.user
-
-        # Channel limit enforcement (soft): skip if channel is outside allowed set
-        if user.channel_limit is not None:
-            if channel_id not in allowed_map.get(user.id, set()):
-                logger.debug(
-                    "Skipping user %s (channel %s exceeds tier limit %d)",
-                    user.telegram_id, channel_id, user.channel_limit,
-                )
-                continue
-
-        digest_only = user.digest_enabled and user.can_auto_summary
-        result.append((user.telegram_id, uc.ai_filter, digest_only))
-
-    logger.debug("Eligible subscribers for channel %s: %s", channel_id, [r[0] for r in result])
-    return result
-
-
-def _user_lang(db, telegram_id: int) -> str:
-    user = db.query(User).filter_by(telegram_id=telegram_id).first()
-    return lang_of(user) if user else "ru"
 
 
 def _media_size_ok(msg) -> bool:

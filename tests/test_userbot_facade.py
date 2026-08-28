@@ -30,3 +30,13 @@ def test_monitor_exposes_runtime_api():
 def test_monitor_keeps_tested_compatibility_helpers():
     for name in COMPATIBILITY_HELPERS:
         assert hasattr(monitor, name)
+
+
+def test_subscriber_helpers_come_from_focused_module():
+    from src.userbot import subscribers
+
+    assert monitor._get_eligible_subscribers is subscribers.get_eligible_subscribers
+    assert (
+        monitor._get_eligible_subscriber_details
+        is subscribers.get_eligible_subscriber_details
+    )
