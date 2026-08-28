@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 README = (ROOT / "README.md").read_text()
 ENV_EXAMPLE = (ROOT / ".env.example").read_text()
+AUTH_USERBOT = (ROOT / "auth_userbot.py").read_text()
 
 README_HEADINGS = (
     "## Возможности и тарифы",
@@ -109,3 +110,8 @@ def test_environment_example_lists_each_config_key_once():
 
     assert ENV_EXAMPLE.count("HEARTBEAT_STALE_MINUTES=") == 1
     assert ENV_EXAMPLE.count("REALERT_HOURS=") == 1
+
+
+def test_session_generator_points_to_current_deployment():
+    assert "Render env vars" not in AUTH_USERBOT
+    assert "GitHub Secret" in AUTH_USERBOT
