@@ -343,12 +343,14 @@ class TestAlbumCollapsing:
 
     def test_album_creates_single_post(self, db, monkeypatch):
         import asyncio
-        from src.userbot import monitor
+        from src.userbot import delivery, monitor
 
         channel = create_channel(db, username="album_chan")
-        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(delivery, "get_session", lambda: db)
         monkeypatch.setattr(db, "close", lambda: None)  # keep shared session alive
-        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+        monkeypatch.setattr(
+            delivery, "get_eligible_subscriber_details", lambda *a: []
+        )
 
         for i, text in ((1, "подпись альбома"), (2, ""), (3, "")):
             m = self._msg(i, grouped_id=777, text=text)
@@ -361,12 +363,14 @@ class TestAlbumCollapsing:
 
     def test_album_caption_on_later_item_is_attached(self, db, monkeypatch):
         import asyncio
-        from src.userbot import monitor
+        from src.userbot import delivery, monitor
 
         channel = create_channel(db, username="album_chan2")
-        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(delivery, "get_session", lambda: db)
         monkeypatch.setattr(db, "close", lambda: None)
-        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+        monkeypatch.setattr(
+            delivery, "get_eligible_subscriber_details", lambda *a: []
+        )
 
         # caption arrives on the SECOND album item
         first = self._msg(10, grouped_id=888, text="")
@@ -381,12 +385,14 @@ class TestAlbumCollapsing:
 
     def test_album_siblings_advance_polling_cursor(self, db, monkeypatch):
         import asyncio
-        from src.userbot import monitor
+        from src.userbot import delivery, monitor
 
         channel = create_channel(db, username="album_chan3")
-        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(delivery, "get_session", lambda: db)
         monkeypatch.setattr(db, "close", lambda: None)
-        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+        monkeypatch.setattr(
+            delivery, "get_eligible_subscriber_details", lambda *a: []
+        )
 
         for i in (21, 22, 23):
             asyncio.run(monitor._process_message(None, channel, self._msg(i, grouped_id=999)))
@@ -397,12 +403,14 @@ class TestAlbumCollapsing:
 
     def test_non_album_messages_unaffected(self, db, monkeypatch):
         import asyncio
-        from src.userbot import monitor
+        from src.userbot import delivery, monitor
 
         channel = create_channel(db, username="plain_chan")
-        monkeypatch.setattr(monitor, "get_session", lambda: db)
+        monkeypatch.setattr(delivery, "get_session", lambda: db)
         monkeypatch.setattr(db, "close", lambda: None)
-        monkeypatch.setattr(monitor, "_get_eligible_subscribers", lambda *a: [])
+        monkeypatch.setattr(
+            delivery, "get_eligible_subscriber_details", lambda *a: []
+        )
 
         for i in (31, 32):
             m = self._msg(i, grouped_id=None, text=f"post {i}")

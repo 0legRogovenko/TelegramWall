@@ -50,3 +50,11 @@ def test_media_helpers_come_from_focused_module():
     assert monitor._media_size_ok is media.media_size_ok
     assert monitor._cache_file_id is media.cache_file_id
     assert monitor._media_file_ids is media.MEDIA_FILE_IDS
+
+
+def test_delivery_runtime_comes_from_focused_module():
+    from src.userbot import delivery
+
+    assert monitor._process_message is delivery.process_message
+    assert monitor.flush_buffer_on_shutdown is delivery.flush_buffer_on_shutdown
+    assert monitor._flush_pending is delivery.flush_pending

@@ -57,7 +57,7 @@ def patch_db_session(db, monkeypatch):
         "src.bot.handlers.stats.db_session",
         "src.bot.handlers.callbacks.db_session",
         "src.bot.handlers.buttons.db_session",
-        "src.userbot.monitor.db_session",
+        "src.userbot.delivery.db_session",
         "src.services.subscription_notifier.db_session",
         "src.services.upsell.db_session",
     ]
