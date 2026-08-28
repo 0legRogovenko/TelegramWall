@@ -192,6 +192,8 @@ class TestCmdAddChannel:
         await cmd_add_channel(update, make_context(args=["@extrachan3006"]))
         reply = update.message.reply_text.call_args[0][0]
         assert "Лимит" in reply or "лимит" in reply
+        db.refresh(user)
+        assert user.upsell_last_sent_at is not None
 
 
 # ── /filter ───────────────────────────────────────────────────────────────────

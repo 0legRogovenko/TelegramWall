@@ -8,6 +8,7 @@ from src.bot.handlers.channels import _normalize_channel, cmd_add_channel, cmd_c
 from src.bot.i18n import lang_of, t
 from src.bot.keyboards import subscribe_keyboard
 from src.database import db_session
+from src.services.upsell import mark_contextual_upsell
 
 
 async def btn_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -31,6 +32,7 @@ async def btn_summary_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 t("sum_unavailable", lang), parse_mode="HTML",
                 reply_markup=subscribe_keyboard(lang),
             )
+            await mark_contextual_upsell(user.telegram_id)
             return
     context.user_data["awaiting_summary_id"] = True
     await update.message.reply_text(t("prompt_sum_id", lang), parse_mode="HTML")

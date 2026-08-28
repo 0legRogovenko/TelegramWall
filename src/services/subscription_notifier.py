@@ -126,6 +126,10 @@ async def send_due_notifications() -> int:
                 reply_markup=subscribe_keyboard(notice.lang),
             )
             await asyncio.to_thread(_mark_sent, notice.subscription_id, notice.kind)
+            if notice.kind == "expired":
+                from src.services.upsell import mark_contextual_upsell
+
+                await mark_contextual_upsell(notice.telegram_id)
             sent += 1
         except Exception as exc:
             logger.warning(

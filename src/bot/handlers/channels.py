@@ -11,6 +11,7 @@ from src.bot.i18n import lang_of, t, tier_label
 from src.bot.keyboards import subscribe_keyboard, user_channels_keyboard
 from src.database import db_session
 from src.models import Channel, UserChannel
+from src.services.upsell import mark_contextual_upsell
 
 _LINK_RE = re.compile(r"^(?:https?://)?t(?:elegram)?\.me/(@?[A-Za-z0-9_]{3,})/?$", re.I)
 
@@ -58,6 +59,8 @@ async def cmd_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(lang),
             )
+            if tier == "free":
+                await mark_contextual_upsell(user.telegram_id)
             return
 
         channel = _get_or_create_channel(db, username)
@@ -204,6 +207,7 @@ async def cmd_filter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 t("flt_ai_pro", lang), parse_mode="HTML",
                 reply_markup=subscribe_keyboard(lang),
             )
+            await mark_contextual_upsell(user.telegram_id)
             return
 
         uc.ai_filter = " ".join(rest)

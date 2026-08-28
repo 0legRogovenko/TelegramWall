@@ -93,3 +93,26 @@ async def test_failed_send_is_retried_later(db, monkeypatch):
     await send_due_notifications()
     db.refresh(sub)
     assert sub.expiry_warning_sent_at is None
+
+
+async def test_successful_expired_notice_advances_upsell_cooldown(db, monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    now = datetime.now(timezone.utc)
+    user = create_user(db, telegram_id=9506, language="ru")
+    sub = _subscription(db, user, now - timedelta(hours=1))
+    app = MagicMock()
+    app.bot.send_message = AsyncMock()
+    monkeypatch.setattr("src.bot.app.ptb_app", app)
+
+    async def inline(func, *args):
+        return func(*args)
+
+    monkeypatch.setattr("src.services.subscription_notifier.asyncio.to_thread", inline)
+    monkeypatch.setattr("src.services.upsell.asyncio.to_thread", inline)
+
+    assert await send_due_notifications() >= 1
+    db.refresh(sub)
+    db.refresh(user)
+    assert sub.expired_notice_sent_at is not None
+    assert user.upsell_last_sent_at is not None

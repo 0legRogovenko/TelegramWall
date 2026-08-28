@@ -14,6 +14,7 @@ from src.database import db_session
 from src.models import Post, User
 from src.services.ai_access import authorized_post, claim_summary_request
 from src.services.summarizer import summarize
+from src.services.upsell import mark_contextual_upsell
 
 
 async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -26,6 +27,8 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 t(key, lang), parse_mode="HTML",
                 reply_markup=None if user.can_summary else subscribe_keyboard(lang),
             )
+            if not user.can_summary:
+                await mark_contextual_upsell(user.telegram_id)
             return
 
         try:
@@ -52,6 +55,7 @@ async def cmd_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 parse_mode="HTML",
                 reply_markup=subscribe_keyboard(lang),
             )
+            await mark_contextual_upsell(user.telegram_id)
             return
 
         if post.summary:
@@ -168,6 +172,8 @@ async def cmd_digest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 t("digest_unavailable", lang), parse_mode="HTML",
                 reply_markup=subscribe_keyboard(lang),
             )
+            if user.subscription_tier == "free":
+                await mark_contextual_upsell(user.telegram_id)
             return
         await update.message.reply_text(
             t("digest_settings", lang, hour=config.DIGEST_HOUR_UTC),

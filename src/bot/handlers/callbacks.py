@@ -23,6 +23,7 @@ from src.config import config
 from src.database import db_session
 from src.models import UserChannel
 from src.services.ai_access import authorized_post, claim_summary_request
+from src.services.upsell import mark_contextual_upsell
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,6 +177,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                     parse_mode="HTML",
                     reply_markup=subscribe_keyboard(lang),
                 )
+                await mark_contextual_upsell(user.telegram_id)
                 return
             if post.summary:
                 await query.message.reply_text(

@@ -72,4 +72,5 @@ async def test_free_user_summary_request_is_saved_for_after_payment(db):
 
     db.refresh(user)
     assert user.pending_summary_post_id == post.id
+    assert user.upsell_last_sent_at is not None
     update.callback_query.message.reply_text.assert_awaited_once()

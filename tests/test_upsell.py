@@ -184,6 +184,15 @@ async def test_successful_send_records_cooldown(db, monkeypatch, inline_to_threa
     assert user.upsell_last_sent_at is not None
 
 
+async def test_contextual_offer_advances_cooldown(db, inline_to_thread):
+    user = create_user(db, telegram_id=9630, language="ru")
+
+    assert hasattr(upsell_module, "mark_contextual_upsell")
+    assert await upsell_module.mark_contextual_upsell(user.telegram_id) is True
+    db.refresh(user)
+    assert user.upsell_last_sent_at is not None
+
+
 async def test_failed_send_does_not_consume_cooldown(
     db, monkeypatch, inline_to_thread
 ):

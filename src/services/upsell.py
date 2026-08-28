@@ -103,6 +103,14 @@ def mark_upsell_sent(telegram_id: int, sent_at: datetime | None = None) -> bool:
         return True
 
 
+async def mark_contextual_upsell(telegram_id: int) -> bool:
+    """Advance the same cooldown after a contextual subscription offer."""
+    marked = await asyncio.to_thread(mark_upsell_sent, telegram_id)
+    if marked:
+        metrics.record(metrics.UPSELL_SENT, "contextual")
+    return marked
+
+
 async def send_due_upsells() -> int:
     """Send one bounded pass, revalidating every candidate before delivery."""
     from src.bot.app import ptb_app
