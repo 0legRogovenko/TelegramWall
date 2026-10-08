@@ -6,7 +6,7 @@ name: Healthcheck
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # every 30 minutes
+    - cron: "13,43 * * * *"  # every 30 minutes, away from the top-of-hour peak
   workflow_dispatch:          # manual run for testing
 
 jobs:

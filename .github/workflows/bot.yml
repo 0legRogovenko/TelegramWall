@@ -10,12 +10,14 @@ name: Bot
 # minute-for-minute outage — the old job had already died when the late tick
 # arrived. Restarting every 2h against a ~5.8h timeout means the bot only goes
 # down if roughly three ticks in a row are lost.
+# Avoid the start of the hour, when scheduled jobs are most likely to be
+# delayed or dropped. This reduces risk; Actions still offers no uptime SLA.
 
 on:
   push:
     branches: [main]
   schedule:
-    - cron: "0 */2 * * *"   # restart every 2 hours — see note above
+    - cron: "17 */2 * * *"  # every 2 hours, away from the top-of-hour peak
   workflow_dispatch:         # manual trigger from GitHub UI
 
 concurrency:
