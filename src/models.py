@@ -219,6 +219,17 @@ class BotHealth(Base):
     alert_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DailyDigest(Base):
+    """Prepared daily digest and send cursor, durable across bot restarts."""
+    __tablename__ = "daily_digests"
+
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    next_chunk: Mapped[int] = mapped_column(Integer, default=0)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 

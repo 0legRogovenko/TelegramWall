@@ -1,6 +1,7 @@
 """Inline keyboard callback handler."""
 import html
-from telegram import Update
+import logging
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import (
@@ -24,6 +25,8 @@ from src.database import db_session
 from src.models import UserChannel
 from src.services.ai_access import authorized_post, claim_summary_request
 from src.services.upsell import mark_contextual_upsell
+
+logger = logging.getLogger(__name__)
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -149,9 +152,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
         await query.message.edit_text(t("digest_generating", lang))
         from src.userbot.monitor import send_digest_now
-        sent = await send_digest_now(
-            update.effective_user.id, channel_ids=list(selected)
-        )
+        try:
+            sent = await send_digest_now(
+                update.effective_user.id, channel_ids=list(selected)
+            )
+        except Exception as exc:
+            logger.warning("On-demand digest failed: %s", exc)
+            await query.message.edit_text(
+                t("digest_error", lang), parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t("kb_digest_retry", lang), callback_data="dgo"),
+                ]]),
+            )
+            return
         if sent:
             await query.message.delete()
         else:

@@ -49,6 +49,7 @@ from src.bot.handlers import (
 from src.bot.i18n import btn_variants
 from src.bot.payments import handle_pre_checkout, handle_successful_payment
 from src.config import config
+from src.bot.update_processor import UserUpdateProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ def build_ptb_app(loop: asyncio.AbstractEventLoop) -> Application:
         Application.builder()
         .token(config.TELEGRAM_BOT_TOKEN)
         .rate_limiter(AIORateLimiter())  # respects Telegram flood limits
+        .concurrent_updates(UserUpdateProcessor())
     )
     if use_webhook:
         builder = builder.updater(None)  # Flask handles incoming updates

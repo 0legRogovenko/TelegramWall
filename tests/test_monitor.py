@@ -1,4 +1,6 @@
 """Tests for _get_eligible_subscribers logic in userbot/monitor.py."""
+import pytest
+
 from src.userbot.monitor import (
     MAX_MESSAGE_CHARS,
     _get_eligible_subscriber_details,
@@ -329,6 +331,13 @@ class TestMediaHelpers:
 
 class TestAlbumCollapsing:
     """An album (grouped_id) must become ONE post, not N."""
+
+    # Tests use the session-wide in-memory connection; production uses workers.
+    @pytest.fixture(autouse=True)
+    def inline_workers(self, monkeypatch):
+        async def inline(func, *args, **kwargs):
+            return func(*args, **kwargs)
+        monkeypatch.setattr("src.userbot.monitor.asyncio.to_thread", inline)
 
     def _msg(self, msg_id, grouped_id=None, text=""):
         from unittest.mock import MagicMock
