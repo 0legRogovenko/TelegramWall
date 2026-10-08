@@ -1,3 +1,6 @@
+import logging
+import time
+
 import anthropic
 
 from src.config import config
@@ -85,6 +88,9 @@ MAX_DIGEST_INPUT_CHARS = 12000
 MAX_DIGEST_POST_CHARS = 400
 
 _client: anthropic.Anthropic | None = None
+_rejected_key: str | None = None
+_recheck_after = 0.0
+logger = logging.getLogger(__name__)
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -92,8 +98,28 @@ def _get_client() -> anthropic.Anthropic:
     if _client is None:
         if not config.ANTHROPIC_API_KEY:
             raise RuntimeError("ANTHROPIC_API_KEY не задан")
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        _client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY, timeout=30.0, max_retries=1,
+        )
     return _client
+
+
+def _create_message(**kwargs):
+    """Bound failed AI calls; a rejected credential must not stall every post."""
+    global _rejected_key, _recheck_after
+    if config.ANTHROPIC_API_KEY == _rejected_key and time.monotonic() < _recheck_after:
+        raise RuntimeError("AI authentication unavailable; update ANTHROPIC_API_KEY")
+    try:
+        return _get_client().messages.create(**kwargs)
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+        _rejected_key = config.ANTHROPIC_API_KEY
+        _recheck_after = time.monotonic() + 300
+        logger.error("AI credential rejected; update the ANTHROPIC_API_KEY secret")
+        metrics.record(metrics.ERROR_AI, "AI credential rejected (401/403)")
+        raise
+    except Exception as exc:
+        metrics.record(metrics.ERROR_AI, str(exc))
+        raise
 
 
 def _text_of(message) -> str:
@@ -104,8 +130,7 @@ def _text_of(message) -> str:
 def is_relevant(text: str, filter_prompt: str) -> bool:
     """Return True if text matches the user's AI filter description."""
     try:
-        client = _get_client()
-        msg = client.messages.create(
+        msg = _create_message(
             model=config.CLAUDE_FILTER_MODEL,
             max_tokens=3,
             system=FILTER_SYSTEM,
@@ -135,8 +160,7 @@ def summarize(text: str, lang: str = "ru") -> str:
         }
         return placeholders.get(lang, placeholders["ru"])
 
-    client = _get_client()
-    message = client.messages.create(
+    message = _create_message(
         model=config.CLAUDE_MODEL,
         max_tokens=250,  # hard cost cap; 60 words is ~120 tokens
         thinking={"type": "disabled"},  # no reasoning tokens for summarization
@@ -161,10 +185,9 @@ def build_digest(sections: list[tuple[str, list[str]]], lang: str = "ru") -> str
         parts.append(f"@{name}:\n{joined}")
     content = "\n\n".join(parts)[:MAX_DIGEST_INPUT_CHARS]
 
-    client = _get_client()
     # ~250 output tokens per channel block; hard cap keeps cost bounded
     max_tokens = min(400 + 300 * len(sections), 3000)
-    message = client.messages.create(
+    message = _create_message(
         model=config.CLAUDE_MODEL,
         max_tokens=max_tokens,
         thinking={"type": "disabled"},  # no reasoning tokens for digest writing

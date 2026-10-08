@@ -6,6 +6,36 @@ import pytest
 from src.services import summarizer
 
 
+def test_client_has_bounded_timeout_and_retries(monkeypatch):
+    monkeypatch.setattr(summarizer.config, "ANTHROPIC_API_KEY", "synthetic-test-key")
+    monkeypatch.setattr(summarizer, "_client", None)
+    client = summarizer._get_client()
+    try:
+        timeout = client.timeout.read if hasattr(client.timeout, "read") else client.timeout
+        assert timeout <= 30
+        assert client.max_retries <= 1
+    finally:
+        client.close()
+
+
+def test_rejected_key_fails_fast_until_recheck(monkeypatch):
+    import anthropic
+    import httpx
+
+    client = MagicMock()
+    client.messages.create.side_effect = anthropic.AuthenticationError(
+        "Invalid API key", response=httpx.Response(
+            401, request=httpx.Request("POST", "https://example.test/messages"),
+        ), body={"error": {"message": "API key is invalid."}},
+    )
+    monkeypatch.setattr(summarizer, "_get_client", lambda: client)
+    monkeypatch.setattr(summarizer.config, "ANTHROPIC_API_KEY", "rejected-test-key")
+    for _ in range(2):
+        with pytest.raises(Exception):
+            summarizer.summarize("News " * 30)
+    assert client.messages.create.call_count == 1
+
+
 class TestSummarize:
     def test_short_text_returns_placeholder_without_api_call(self):
         result = summarizer.summarize("Too short")

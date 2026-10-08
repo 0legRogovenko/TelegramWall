@@ -541,6 +541,14 @@ T = {
         "en": "📰 <b>No new posts</b>\n\nNothing arrived from the selected channels in the last 24 hours.",
         "es": "📰 <b>Sin posts nuevos</b>\n\nNo llegó nada de los canales seleccionados en las últimas 24 horas.",
     },
+    "digest_error": {
+        "ru": "⚠️ Дайджест сейчас недоступен. Попробуйте позже — выбранные каналы сохранены.",
+        "en": "⚠️ The digest is temporarily unavailable. Try again later — your sources are saved.",
+        "es": "⚠️ El boletín no está disponible ahora. Inténtalo más tarde; tus fuentes están guardadas.",
+    },
+    "kb_digest_retry": {
+        "ru": "🔄 Повторить", "en": "🔄 Retry", "es": "🔄 Reintentar",
+    },
     "digest_footer": {
         "ru": "<i>📰 Сделано в @{bot} — AI-дайджесты ваших каналов</i>",
         "en": "<i>📰 Made with @{bot} — AI digests of your channels</i>",
