@@ -1,7 +1,12 @@
 """Allow independent users to interact while preserving each user's order."""
 import asyncio
+import logging
 
 from telegram.ext import BaseUpdateProcessor
+
+from src.services.recipients import resume_delivery
+
+logger = logging.getLogger(__name__)
 
 
 class UserUpdateProcessor(BaseUpdateProcessor):
@@ -24,6 +29,15 @@ class UserUpdateProcessor(BaseUpdateProcessor):
         self._users[user.id] = lock, waiting + 1
         try:
             async with lock:
+                chat = getattr(update, "effective_chat", None)
+                message = getattr(update, "effective_message", None)
+                if (chat is not None and message is not None
+                        and chat.type == "private" and chat.id == user.id):
+                    try:
+                        await asyncio.to_thread(resume_delivery, user.id)
+                    except Exception as exc:
+                        # Reachability bookkeeping must not swallow the command.
+                        logger.warning("Could not resume private delivery: %s", exc)
                 await coroutine
         finally:
             remaining = self._users[user.id][1] - 1

@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
+from telegram.error import Forbidden
 
 from src.bot.i18n import lang_of, t, tier_label
 from src.bot.keyboards import subscribe_keyboard
 from src.config import config
 from src.database import db_session
 from src.models import Subscription, User
+from src.services.recipients import pause_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ class ExpiryNotification:
     is_trial: bool
     tier: str
     expires_at: datetime
+    generation: int = 0
 
 
 def _aware(value: datetime) -> datetime:
@@ -52,6 +55,7 @@ def due_notifications(db, now: datetime | None = None) -> list[ExpiryNotificatio
         )
         .join(User, User.id == Subscription.user_id)
         .filter(
+            User.delivery_paused.is_(False),
             Subscription.expires_at >= recently_expired,
             Subscription.expires_at <= warning_after,
         )
@@ -77,6 +81,7 @@ def due_notifications(db, now: datetime | None = None) -> list[ExpiryNotificatio
             is_trial=sub.stars_paid == 0 and sub.tier == "pro",
             tier=sub.tier,
             expires_at=expires,
+            generation=user.delivery_generation,
         ))
     return result
 
@@ -131,6 +136,11 @@ async def send_due_notifications() -> int:
 
                 await mark_contextual_upsell(notice.telegram_id)
             sent += 1
+        except Forbidden:
+            try:
+                await asyncio.to_thread(pause_delivery, notice.telegram_id, notice.generation)
+            except Exception as exc:
+                logger.warning("Cannot persist notification recipient pause: %s", exc)
         except Exception as exc:
             logger.warning(
                 "Subscription notice %s to %s failed: %s",

@@ -49,6 +49,12 @@ def init_db() -> None:
         )
         # users — new columns
         _run_migration(conn, "ALTER TABLE users ADD COLUMN digest_enabled BOOLEAN DEFAULT FALSE")
+        _run_migration(
+            conn, "ALTER TABLE users ADD COLUMN delivery_paused BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        _run_migration(
+            conn, "ALTER TABLE users ADD COLUMN delivery_generation INTEGER NOT NULL DEFAULT 0"
+        )
         _run_migration(conn, "ALTER TABLE users ADD COLUMN trial_used BOOLEAN DEFAULT FALSE")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN quiet_start INTEGER")
         _run_migration(conn, "ALTER TABLE users ADD COLUMN quiet_end INTEGER")

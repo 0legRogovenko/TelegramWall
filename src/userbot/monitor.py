@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import joinedload
+from telegram.error import Forbidden
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 from telethon.tl.types import (
@@ -28,6 +29,7 @@ from src.models import (
     BotEvent, BotHealth, Channel, DailyDigest, PendingPost, Post, User, UserChannel,
 )
 from src.services import metrics
+from src.services.recipients import DeliveryForbidden, get_delivery_generation, pause_delivery
 from src.services.summarizer import build_digest, summarize
 
 logger = logging.getLogger(__name__)
@@ -193,6 +195,8 @@ def _get_eligible_subscriber_details(
     result = []
     for uc in ucs:
         user = uc.user
+        if user.delivery_paused:
+            continue
 
         # Channel limit enforcement (soft): skip if channel is outside allowed set
         if user.channel_limit is not None:
@@ -403,17 +407,20 @@ async def _process_message(client: TelegramClient, channel: Channel, msg) -> Non
                      post_id, tg_id, len(_batch_buffer[key]["posts"]))
 
 
-def _delivery_preferences(tg_id: int, post_id: int) -> tuple[str, bool, str | None]:
+def _delivery_preferences(tg_id: int, post_id: int) -> tuple[str, bool, str | None, int] | None:
     with db_session() as db:
         user = db.query(User).filter_by(telegram_id=tg_id).options(
             joinedload(User.subscriptions),
         ).first()
         if not user:
-            return "ru", False, None
+            return "ru", False, None, 0
+        if user.delivery_paused:
+            return None
         row = db.query(UserChannel.ai_filter).join(
             Post, Post.channel_id == UserChannel.channel_id,
         ).filter(UserChannel.user_id == user.id, Post.id == post_id).first()
-        return lang_of(user), user.auto_summary and user.can_auto_summary, row[0] if row else None
+        return (lang_of(user), user.auto_summary and user.can_auto_summary,
+                row[0] if row else None, user.delivery_generation)
 
 
 def _post_summary(post_id: int) -> str | None:
@@ -437,11 +444,25 @@ async def _deliver_to_user(
     text: str,
     username: str | None = None,
 ) -> None:
+    preferences = await asyncio.to_thread(_delivery_preferences, tg_id, post_id)
+    if preferences is None:
+        return
+    try:
+        await _deliver_post(client, tg_id, msg, channel_label, post_id, text,
+                            username, preferences)
+    except Forbidden as exc:
+        raise DeliveryForbidden(exc, preferences[3]) from exc
+
+
+async def _deliver_post(
+    client, tg_id, msg, channel_label, post_id, text, username,
+    preferences: tuple[str, bool, str | None, int],
+) -> None:
     from src.bot.app import ptb_app
 
     # Auto-summary mode: send only the summary + a link to the original post,
     # never the full post. Falls through to normal delivery if AI fails.
-    lang, auto_summary, ai_filter = await asyncio.to_thread(_delivery_preferences, tg_id, post_id)
+    lang, auto_summary, ai_filter, _generation = preferences
     if ai_filter and text:
         from src.services.summarizer import is_relevant
         if not await asyncio.to_thread(is_relevant, text, ai_filter):
@@ -498,6 +519,8 @@ async def _deliver_to_user(
                 caption_covers_text = fits
                 logger.info("✅ Sent %s post #%s to user %s", media_kind, post_id, tg_id)
                 metrics.record(metrics.DELIVERED_POST)
+            except Forbidden:
+                raise  # A different message format cannot fix a forbidden chat.
             except Exception as exc:
                 # Drop the cached id only when the FILE is at fault. A blocked
                 # or deleted recipient says nothing about the file, and
@@ -617,6 +640,8 @@ async def _send_summary(
                 if fits_caption:
                     metrics.record(metrics.DELIVERED_SUMMARY)
                     return True
+            except Forbidden:
+                raise
             except Exception as exc:
                 if _is_file_error(exc):
                     _media_file_ids.pop(post_id, None)
@@ -630,6 +655,8 @@ async def _send_summary(
         logger.info("✅ Auto-summary for post #%s → user %s", post_id, tg_id)
         metrics.record(metrics.DELIVERED_SUMMARY)
         return True
+    except Forbidden:
+        raise
     except Exception as exc:
         logger.warning("Cannot send summary to %s: %s", tg_id, exc)
         metrics.record(metrics.ERROR_DELIVERY, str(exc))
@@ -645,6 +672,9 @@ def _queue_pending(tg_id: int, channel_id: int, posts: list[dict]) -> bool:
     db = None
     try:
         db = get_session()
+        paused = db.query(User.delivery_paused).filter_by(telegram_id=tg_id).scalar()
+        if paused:
+            return True  # Intentionally discarded, not a transient queue-write failure.
         for p in posts:
             exists = db.query(PendingPost).filter_by(
                 telegram_id=tg_id, post_id=p["post_id"]
@@ -695,6 +725,23 @@ def _entry_due(entry: dict, now: float) -> bool:
     return now - entry["first_at"] >= DELIVERY_GRACE_SECS
 
 
+async def _pause_recipient(tg_id: int, generation: int) -> bool:
+    # Detach only the old buffer before yielding. A new private interaction may
+    # resume the feed and collect a new entry while the database call completes.
+    detached = {key: _batch_buffer.pop(key) for key in list(_batch_buffer) if key[0] == tg_id}
+    applied = False
+    try:
+        applied = await asyncio.to_thread(pause_delivery, tg_id, generation)
+        return applied
+    finally:
+        if not applied:
+            for key, entry in detached.items():
+                newer = _batch_buffer.pop(key, None)
+                if newer:
+                    entry["posts"] = entry["posts"] + newer["posts"]
+                _batch_buffer[key] = entry
+
+
 async def _deliver_entry(client: TelegramClient, key: tuple[int, int], entry: dict) -> None:
     """Deliver every buffered post individually, oldest first."""
     tg_id, channel_id = key
@@ -708,6 +755,15 @@ async def _deliver_entry(client: TelegramClient, key: tuple[int, int], entry: di
                         username=entry.get("username"),
                     )
                 except Exception as exc:
+                    if isinstance(exc, Forbidden):
+                        try:
+                            paused = await _pause_recipient(tg_id, getattr(exc, "generation", 0))
+                        except Exception as state_error:
+                            logger.warning("Cannot persist delivery pause: %s", state_error)
+                        else:
+                            if paused:
+                                entry["posts"] = []
+                                return
                     # Persist the UNDELIVERED tail for the next startup; what
                     # already went out must not be re-sent.
                     logger.warning("Delivery error for user %s: %s — re-queued %d post(s)",
@@ -769,6 +825,10 @@ def _pending_snapshot():
 
         result = []
         for (tg_id, channel_id), post_ids in groups.items():
+            if db.query(User.delivery_paused).filter_by(telegram_id=tg_id).scalar():
+                db.query(PendingPost).filter_by(telegram_id=tg_id).delete()
+                db.commit()
+                continue
             channel = db.query(Channel).filter_by(id=channel_id).first()
             posts = (
                 db.query(Post)
@@ -809,11 +869,20 @@ async def _flush_pending_once(client: TelegramClient | None = None) -> None:
     from src.bot.app import ptb_app
     if ptb_app is None:
         return
+    known_pending = set(_pending_keys)
     groups = await asyncio.to_thread(_pending_snapshot)
-    _pending_keys.update((g[0], g[1]) for g in groups)
+    snapshot_keys = {(g[0], g[1]) for g in groups}
+    # Another send may queue a new key during the snapshot. Only prune keys
+    # already known before it; stale keys must not block a returning user's feed.
+    _pending_keys.difference_update(known_pending - snapshot_keys)
+    _pending_keys.update(snapshot_keys)
+    paused_in_pass: set[int] = set()
     for tg_id, channel_id, tg_channel_id, username, label, lang, posts in groups:
         key = (tg_id, channel_id)
-        if key in _in_flight:
+        if key in _in_flight or tg_id in paused_in_pass:
+            continue
+        if await asyncio.to_thread(get_delivery_generation, tg_id) is None:
+            paused_in_pass.add(tg_id)
             continue
         entry = {"label": label, "username": username,
                  "posts": [{"post_id": pid, "text": text} for pid, _, text in posts]}
@@ -833,15 +902,31 @@ async def _flush_pending_once(client: TelegramClient | None = None) -> None:
                                 client, tg_id, msg, label, post_id, text, username=username,
                             )
                         elif text:
+                            generation = await asyncio.to_thread(get_delivery_generation, tg_id)
+                            if generation is None:
+                                break
                             url = f"https://t.me/{username}/{message_id}"
                             header = f'📢 <b><a href="{url}">{html.escape(label)}</a></b>'
-                            await send_html(
-                                ptb_app.bot, tg_id, f"{header}\n\n{html.escape(text)}"
-                                f"\n\n<i>#{post_id}</i>", summary_button(post_id, lang),
-                            )
+                            try:
+                                await send_html(
+                                    ptb_app.bot, tg_id, f"{header}\n\n{html.escape(text)}"
+                                    f"\n\n<i>#{post_id}</i>", summary_button(post_id, lang),
+                                )
+                            except Forbidden as exc:
+                                raise DeliveryForbidden(exc, generation) from exc
                             metrics.record(metrics.DELIVERED_POST)
                         await asyncio.to_thread(_drop_pending, tg_id, post_id)
                         entry["posts"] = entry["posts"][1:]
+                    except Forbidden as error:
+                        try:
+                            paused = await _pause_recipient(tg_id, getattr(error, "generation", 0))
+                        except Exception as exc:
+                            logger.warning("Cannot persist delivery pause: %s", exc)
+                        else:
+                            if paused:
+                                entry["posts"] = []
+                                paused_in_pass.add(tg_id)
+                        break
                     except Exception as exc:
                         logger.warning("Cannot deliver pending post #%s to %s: %s",
                                        post_id, tg_id, exc)
@@ -1142,10 +1227,16 @@ async def _build_and_send_digest(
             await asyncio.to_thread(_prepare_daily, telegram_id, day, full)
     chunks = _split_message(full)
     for index in range(start, len(chunks)):
-        await ptb_app.bot.send_message(
-            chat_id=telegram_id, text=chunks[index], parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
+        generation = await asyncio.to_thread(get_delivery_generation, telegram_id)
+        if generation is None:
+            return False
+        try:
+            await ptb_app.bot.send_message(
+                chat_id=telegram_id, text=chunks[index], parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except Forbidden as exc:
+            raise DeliveryForbidden(exc, generation) from exc
         if day:
             await asyncio.to_thread(_advance_daily, telegram_id, day, index + 1,
                                     index == len(chunks) - 1)
@@ -1159,7 +1250,7 @@ async def send_digest_now(telegram_id: int, channel_ids: list[int] | None = None
 
 def _daily_digest_users(day: str) -> list[int]:
     with db_session() as db:
-        users = db.query(User).filter_by(digest_enabled=True).options(
+        users = db.query(User).filter_by(digest_enabled=True, delivery_paused=False).options(
             joinedload(User.subscriptions),
         ).all()
         completed = {tg for (tg,) in db.query(DailyDigest.telegram_id).filter_by(
@@ -1178,6 +1269,11 @@ async def _send_daily_digest() -> None:
             sent = await _build_and_send_digest(tg_id, day=day)
             if sent:
                 logger.info("Daily digest sent to user %s", tg_id)
+        except Forbidden as error:
+            try:
+                await _pause_recipient(tg_id, getattr(error, "generation", 0))
+            except Exception as exc:
+                logger.warning("Cannot persist digest delivery pause: %s", exc)
         except Exception as exc:
             logger.warning("Daily digest failed for user %s: %s", tg_id, exc)
 
