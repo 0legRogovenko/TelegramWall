@@ -60,6 +60,7 @@ def patch_db_session(db, monkeypatch):
         "src.userbot.monitor.db_session",
         "src.services.subscription_notifier.db_session",
         "src.services.upsell.db_session",
+        "src.services.recipients.db_session",
     ]
     for target in targets:
         monkeypatch.setattr(target, _test_db_session)

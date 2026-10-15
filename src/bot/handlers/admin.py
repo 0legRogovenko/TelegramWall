@@ -31,6 +31,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         active_users = (
             db.query(UserChannel.user_id).filter_by(is_active=True).distinct().count()
         )
+        paused_users = db.query(User).filter_by(delivery_paused=True).count()
 
         # Subscriptions & money
         subs_by_tier = dict(
@@ -86,6 +87,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "<b>Пользователи</b>\n"
             f"  👤 Всего: <b>{total_users}</b>  (+{new_week} за 7 дней)\n"
             f"  ✅ С каналами: <b>{active_users}</b>\n"
+            f"  ⏸ Недоступных получателей: <b>{paused_users}</b>\n"
             f"  🌐 Языки: {lang_line or '—'}\n\n"
             "<b>Подписки</b>\n"
             f"  💳 Платные: {subs_line}\n"

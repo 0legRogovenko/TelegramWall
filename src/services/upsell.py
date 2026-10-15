@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import exists
+from telegram.error import Forbidden
 
 from src.bot.i18n import lang_of, t
 from src.bot.keyboards import upsell_keyboard
@@ -13,6 +14,7 @@ from src.config import config
 from src.database import db_session
 from src.models import Subscription, User, UserChannel
 from src.services import metrics
+from src.services.recipients import pause_delivery
 
 CAMPAIGN_KEYS = ("upsell_summary", "upsell_digest", "upsell_capacity")
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ class UpsellCandidate:
     lang: str
     trial_used: bool
     variant: int
+    generation: int = 0
 
 
 def _variant(user_id: int, now: datetime) -> int:
@@ -46,6 +49,7 @@ def due_upsells(
         Subscription.expires_at > now,
     )
     query = db.query(User).filter(
+        User.delivery_paused.is_(False),
         User.language.isnot(None),
         User.created_at <= cutoff,
         (User.upsell_last_sent_at.is_(None)) | (User.upsell_last_sent_at <= cutoff),
@@ -64,6 +68,7 @@ def due_upsells(
             lang=lang_of(user),
             trial_used=user.trial_used,
             variant=_variant(user.id, now),
+            generation=user.delivery_generation,
         )
         for user in rows
     ]
@@ -131,6 +136,14 @@ async def send_due_upsells() -> int:
                 reply_markup=upsell_keyboard(candidate.trial_used, candidate.lang),
                 disable_web_page_preview=True,
             )
+        except Forbidden:
+            try:
+                await asyncio.to_thread(
+                    pause_delivery, candidate.telegram_id, candidate.generation,
+                )
+            except Exception as exc:
+                logger.warning("Cannot persist offer recipient pause: %s", exc)
+            continue
         except Exception as exc:
             logger.warning("Upsell to %s failed: %s", candidate.telegram_id, exc)
             continue

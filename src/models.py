@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger, Boolean, DateTime, ForeignKey,
-    Index, Integer, String, Text, UniqueConstraint,
+    Index, Integer, String, Text, UniqueConstraint, false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -28,6 +28,13 @@ class User(Base):
     language: Mapped[str | None] = mapped_column(String(5))  # None until chosen at /start
     auto_summary: Mapped[bool] = mapped_column(Boolean, default=False)
     digest_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # A private-chat Forbidden pauses proactive sends, not the user's settings.
+    delivery_paused: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False,
+    )
+    delivery_generation: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+    )
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
     quiet_start: Mapped[int | None] = mapped_column(Integer)   # UTC hour 0-23
     quiet_end: Mapped[int | None] = mapped_column(Integer)     # UTC hour 0-23
